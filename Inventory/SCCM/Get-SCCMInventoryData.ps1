@@ -1,7 +1,7 @@
  ##########################################################################
  #
  # Get-SCCMInventoryData
- # Sam Gold Toolkit
+ # SAM Gold Toolkit
  # Original Source: Sam360, Microsoft SAM Workspace Discovery Tool
  #
  ##########################################################################
