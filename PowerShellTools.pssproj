@@ -29,10 +29,10 @@
   <ItemGroup>
     <Folder Include="Network\General\" />
     <Folder Include="Servers\Exchange\" />
-    <Folder Include="HyperVisor\" />
-    <Folder Include="HyperVisor\Hyper-V\" />
-    <Folder Include="HyperVisor\VMware\" />
-    <Folder Include="HyperVisor\XenServer\" />
+    <Folder Include="HypervisorRename\" />
+    <Folder Include="HypervisorRename\Hyper-V\" />
+    <Folder Include="HypervisorRename\VMware\" />
+    <Folder Include="HypervisorRename\XenServer\" />
     <Folder Include="Inventory\" />
     <Folder Include="Inventory\SCCM\" />
     <Folder Include="Servers\" />
@@ -45,10 +45,10 @@
   <ItemGroup>
     <Compile Include="Network\General\Get-NetworkNeighborhoodList.ps1" />
     <Compile Include="Servers\Exchange\Get-ExchangeDetails.ps1" />
-    <Compile Include="HyperVisor\Hyper-V\Get-HyperVVMList.ps1" />
+    <Compile Include="HypervisorRename\Hyper-V\Get-HyperVVMList.ps1" />
     <Compile Include="Inventory\SCCM\Get-SCCMInventoryData.ps1" />
-    <Compile Include="HyperVisor\VMware\Get-VMwareVMList.ps1" />
-    <Compile Include="HyperVisor\XenServer\Get-XenServerVMData.ps1" />
+    <Compile Include="HypervisorRename\VMware\Get-VMwareVMList.ps1" />
+    <Compile Include="HypervisorRename\XenServer\Get-XenServerVMData.ps1" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Target Name="Build" />
