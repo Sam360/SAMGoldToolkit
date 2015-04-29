@@ -8,6 +8,8 @@
     <RootNamespace>MyApplication</RootNamespace>
     <AssemblyName>MyApplication</AssemblyName>
     <Name>SAMGoldToolkit</Name>
+    <DebugArguments>
+    </DebugArguments>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -38,6 +40,7 @@
     <Folder Include="Servers\" />
     <Folder Include="Network\" />
     <Folder Include="Network\ActiveDirectory\" />
+    <Folder Include="Servers\SQLServer\" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Network\ActiveDirectory\Get-ADDetails.ps1" />
@@ -50,6 +53,7 @@
     <Compile Include="Inventory\SCCM\Get-SCCMInventoryData.ps1" />
     <Compile Include="Hypervisor\VMware\Get-VMwareVMList.ps1" />
     <Compile Include="Hypervisor\XenServer\Get-XenServerVMData.ps1" />
+    <Compile Include="Servers\SQLServer\Get-SQLServerInfo.ps1" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Target Name="Build" />
