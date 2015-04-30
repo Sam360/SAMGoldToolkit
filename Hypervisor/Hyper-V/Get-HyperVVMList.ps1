@@ -12,7 +12,7 @@ Param(
     [alias("o1")]
     $OutputFile = "HyperVExport" + $HyperVServer + ".csv")
 
-functio Get-HyperVVMList {
+function Get-HyperVVMList {
 	$VMRecordList = @()
 
 	# Get all virtual machine objects on the server in question
