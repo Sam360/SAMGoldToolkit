@@ -3,7 +3,7 @@
  #
  # Get-SQLServerInfo
  # SAM Gold Toolkit
- # Original Source: Boe Prox
+ # Original Source: Boe Prox (http://learn-powershell.net/author/boeprox/)
  #
  ##########################################################################
 
@@ -44,7 +44,7 @@ function LogEnvironmentDetails {
 	Write-Output "Server Parameter:			$ComputerName"
 }
 
-Function Get-SQLServerInfo {  
+Function Get-SQLServerInfo { Â 
     <#
         .SYNOPSIS
             Retrieves SQL server information from a local or remote servers.
@@ -90,7 +90,7 @@ Function Get-SQLServerInfo {  
             -----------
             Retrieves the SQL information from DC1
     #>
-    [cmdletbinding()] 
+    [cmdletbinding()]Â 
     Param (
         [parameter(ValueFromPipeline=$True,ValueFromPipelineByPropertyName=$True)]
         [Alias('__Server','DNSHostName','IPAddress')]
