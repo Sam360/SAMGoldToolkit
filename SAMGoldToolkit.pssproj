@@ -8,8 +8,7 @@
     <RootNamespace>MyApplication</RootNamespace>
     <AssemblyName>MyApplication</AssemblyName>
     <Name>SAMGoldToolkit</Name>
-    <DebugArguments>
-    </DebugArguments>
+    <DebugArguments>-UserName jon.mulligan@sam360.com -password rMK~jm@s31297 -Office365 -Verbose</DebugArguments>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -40,6 +39,7 @@
     <Folder Include="Servers\" />
     <Folder Include="Network\" />
     <Folder Include="Network\ActiveDirectory\" />
+    <Folder Include="Servers\XenApp\" />
     <Folder Include="Servers\SQLServer\" />
   </ItemGroup>
   <ItemGroup>
@@ -54,6 +54,7 @@
     <Compile Include="Hypervisor\VMware\Get-VMwareVMList.ps1" />
     <Compile Include="Hypervisor\XenServer\Get-XenServerVMData.ps1" />
     <Compile Include="Servers\SQLServer\Get-SQLServerInfo.ps1" />
+    <Compile Include="Servers\XenApp\Get-XenAppDetails.ps1" />
   </ItemGroup>
   <Import Project="$(MSBuildBinPath)\Microsoft.CSharp.targets" />
   <Target Name="Build" />
