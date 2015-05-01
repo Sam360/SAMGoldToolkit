@@ -50,3 +50,5 @@ function Get_XenAppDetails {
 		LogLastException
 	}
 }
+
+Get_XenAppDetails
