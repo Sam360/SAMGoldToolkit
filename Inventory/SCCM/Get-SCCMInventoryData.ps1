@@ -17,7 +17,8 @@
 	$OutputFile2 = "Software.csv",
 	$UserName,
 	$Password,
-	$RequiredData = "devices")
+	[ValidateSet("AllData","DeviceData","SoftwareData")]
+	$RequiredData = "AllData")
 	
 function LogLastException()
 {
@@ -125,11 +126,11 @@ function Get-SCCMInventoryData {
 	try {
 		LogEnvironmentDetails
 		
-		if ($RequiredData -eq "devices" -or $RequiredData -eq "both") {
+		if ($RequiredData -eq "DeviceData" -or $RequiredData -eq "AllData") {
 			Invoke-SQL -SQLCommand $sqlCommand1 -ResultsFilePath $OutputFile1
 		}
 		
-		if ($RequiredData -eq "software" -or $RequiredData -eq "both") {
+		if ($RequiredData -eq "SoftwareData" -or $RequiredData -eq "AllData") {
 			Invoke-SQL -SQLCommand $sqlCommand2 -ResultsFilePath $OutputFile2
 		}
 	}
