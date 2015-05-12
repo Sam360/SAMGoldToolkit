@@ -1,7 +1,7 @@
  ##########################################################################
  #
- # GetExchangeInfo
- # Sam Gold Toolkit
+ # Get-ExchangeDetails
+ # SAM Gold Toolkit
  # Original Source: Sam360
  #	              : Sanjay Ramaswamy https://gallery.technet.microsoft.com/scriptcenter/acdcb192-f226-4517-b3f9-005dce6f4fc3
  #                : Oliver Moazzezi http://www.exchange2010.com/2013/11/calculating-cal-requirements-for.html
@@ -92,7 +92,7 @@ function EnvironmentConfigured {
 		return $false}
 }
 
-function GetExchangeDetails {
+function Get-ExchangeDetails {
 
 	LogProgress -Activity "Exchange Data Export" -Status "Logging environment details" -percentComplete 1
 	LogEnvironmentDetails
@@ -2606,7 +2606,7 @@ $scriptGetCALReqs2013 =
 
 
 try {
-	GetExchangeDetails
+	Get-ExchangeDetails
 }
 catch {
 	LogLastException
