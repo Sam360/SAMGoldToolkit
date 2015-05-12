@@ -10,13 +10,71 @@ Param(
     [alias("server")]
     $HyperVServer = $env:COMPUTERNAME,
     [alias("o1")]
-    $OutputFile = "HyperVExport" + $HyperVServer + ".csv")
+    $OutputFile1 = "HyperVExport" + $HyperVServer + "Basic.csv",
+    [alias("o2")]
+    $OutputFile2 = "HyperVExport" + $HyperVServer + "Guests.csv",
+    [alias("o3")]
+    $OutputFile3 = "HyperVExport" + $HyperVServer + "Hosts.csv",
+    [alias("o4")]
+    $OutputFile4 = "HyperVExport" + $HyperVServer + "GuestMigration.csv",
+	[ValidateSet("AllData","BasicData","DetailedData")] 
+	$RequiredData = "DetailedData")
 
-function Get-HyperVVMList {
+function LogLastException()
+{
+    $currentException = $Error[0].Exception;
+
+    while ($currentException)
+    {
+        write-output $currentException
+        write-output $currentException.Data
+        write-output $currentException.HelpLink
+        write-output $currentException.HResult
+        write-output $currentException.Message
+        write-output $currentException.Source
+        write-output $currentException.StackTrace
+        write-output $currentException.TargetSite
+
+        $currentException = $currentException.InnerException
+    }
+}
+
+function LogEnvironmentDetails {
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	Write-Output "Computer Name:			$($env:COMPUTERNAME)"
+	Write-Output "User Name:				$($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	Write-Output "Windows Version:			$($OSDetails.Caption)($($OSDetails.Version))"
+	Write-Output "PowerShell Host:			$($host.Version.Major)"
+	Write-Output "PowerShell Version:		$($PSVersionTable.PSVersion)"
+	Write-Output "PowerShell Word size:		$($([IntPtr]::size) * 8) bit"
+	Write-Output "CLR Version:				$($PSVersionTable.CLRVersion)"
+	Write-Output "Server:	            	$HyperVServer"
+	Write-Output "Required Data:		    $RequiredData"
+}
+
+function LogProgress($progressDescription){
+    $output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $progressDescription
+    write-output $output
+}
+
+function Get-HyperVVMList1 {
 	$VMRecordList = @()
 
+	$hyperVNamespace = "root\virtualization"
+	$hyperVClass = gwmi -Class 'Msvm_ComputerSystem' -List -Namespace $hyperVNamespace -computername $HyperVServer -ErrorAction SilentlyContinue
+	if ($hyperVClass -eq $null) {
+		$hyperVNamespace = "root\virtualization\v2"
+		$hyperVClass = gwmi -Class 'Msvm_ComputerSystem' -List -Namespace $hyperVNamespace -computername $HyperVServer -ErrorAction SilentlyContinue
+		if ($hyperVClass -eq $null) {
+			LogProgress "Unable to locate required WMI namespace"
+			return
+		}
+	}
+
 	# Get all virtual machine objects on the server in question
-	$VMs = gwmi -namespace root\virtualization Msvm_ComputerSystem -computername $HyperVServer -filter "Caption = 'Virtual Machine'" 
+	$VMs = gwmi -namespace root\virtualization\v2 Msvm_ComputerSystem -computername $HyperVServer -filter "Caption = 'Virtual Machine'" 
  
 	# Go over each of the virtual machines
 	foreach ($VM in [array] $VMs) 
@@ -27,7 +85,7 @@ function Get-HyperVVMList {
 		# Add Most important Values
 		$VMRecord | Add-Member -MemberType NoteProperty -Name "FQDN" -Value ""
 		$VMRecord | Add-Member -MemberType NoteProperty -Name "OSName" -Value ""
-		$VMRecord | Add-Member -MemberType NoteProperty -Name "HyperV Name" -Value $VM.ElementName
+		$VMRecord | Add-Member -MemberType NoteProperty -Name "HyperV_Name" -Value $VM.ElementName
 		$VMRecord | Add-Member -MemberType NoteProperty -Name "EnabledState" -Value ""
 
 		# Add base values
@@ -65,7 +123,7 @@ function Get-HyperVVMList {
 
 		# Get the KVP Object
 		$query = "Associators of {$VM} Where AssocClass=Msvm_SystemDevice ResultClass=Msvm_KvpExchangeComponent"
-		$Kvp = gwmi -namespace root\virtualization -query $query -computername $HyperVServer
+		$Kvp = gwmi -namespace root\virtualization\v2 -query $query -computername $HyperVServer
 
 		# Converting XML to Object
 		foreach($StrDataItem in $Kvp.GuestIntrinsicExchangeItems)
@@ -90,7 +148,45 @@ function Get-HyperVVMList {
 		$VMRecordList += $VMRecord
 	}
 
-	$VMRecordList | export-csv $OutputFile -notypeinformation
+	$VMRecordList | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
+}
+
+function Get-HyperVVMList2 {
+	if ((Get-Module -ListAvailable -Name "Hyper-V") -eq $null) {
+		LogProgress "Hyper PowerShell module not available"
+		return
+	}
+
+	Import-Module "Hyper-V"
+
+	Get-VM -ComputerName $HyperVServer | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
+	Get-VMHost -ComputerName $HyperVServer | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
+}
+
+function Get-HyperVVMMigrationInfo {
+	Get-WinEvent Microsoft-Windows-Hyper-V-VMMS-Admin -ComputerName $HyperVServer | Where Id -like "2041*" | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
+}
+
+function Get-HyperVVMList {
+	try {
+		LogEnvironmentDetails
+
+		LogProgress "Getting basic HyperV Guest Info (WMI)"
+		Get-HyperVVMList1
+		
+		if ($RequiredData -eq "DetailedData" -or $RequiredData -eq "AllData") {
+			LogProgress "Getting detailed HyperV Info (PowerShell)"
+			Get-HyperVVMList2
+		}
+
+		if ($RequiredData -eq "AllData") {
+			LogProgress "Getting HyperV Guest Migration Info (PowerShell)"
+			Get-HyperVVMMigrationInfo
+		}
+	}
+	catch {
+		LogLastException
+	}
 }
 
 Get-HyperVVMList
