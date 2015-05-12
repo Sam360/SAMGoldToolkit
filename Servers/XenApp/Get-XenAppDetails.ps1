@@ -44,9 +44,11 @@ function Get_XenAppDetails {
 
 	try {
 		add-pssnapin citrix*
-		Get-XAApplicationReport * | Export-Csv $OutputFile1
+		Get-XAApplicationReport * | Export-Csv $OutputFile1 -notypeinformation -Encoding UTF8
 	}
 	catch {
 		LogLastException
 	}
 }
+
+Get_XenAppDetails
