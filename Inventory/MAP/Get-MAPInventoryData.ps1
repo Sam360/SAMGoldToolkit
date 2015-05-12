@@ -48,19 +48,21 @@
 function LogLastException()
 {
     $currentException = $Error[0].Exception;
+    $exceptionCounter = 1
 
     while ($currentException)
     {
-        write-output $currentException
-        write-output $currentException.Data
-        write-output $currentException.HelpLink
-        write-output $currentException.HResult
-        write-output $currentException.Message
-        write-output $currentException.Source
-        write-output $currentException.StackTrace
-        write-output $currentException.TargetSite
+        write-output "Exception $exceptionCounter:            $currentException"
+        write-output "Exception $exceptionCounter Data:       $($currentException.Data)"
+        write-output "Exception $exceptionCounter HelpLink:   $($currentException.HelpLink)"
+        write-output "Exception $exceptionCounter HResult:    $($currentException.HResult)"
+        write-output "Exception $exceptionCounter Message:    $($currentException.Message)"
+        write-output "Exception $exceptionCounter Source:     $($currentException.Source)"
+        write-output "Exception $exceptionCounter StackTrace: $($currentException.StackTrace)"
+        write-output "Exception $exceptionCounter TargetSite: $($currentException.TargetSite)"
 
         $currentException = $currentException.InnerException
+        $exceptionCounter++
     }
 }
 
@@ -235,7 +237,13 @@ function Get-MAPInventoryData {
 		}
 	}
 	catch{
-		LogLastException
+		$currentException = $Error[0].Exception;
+		if ($currentException.Message -like "*Make sure that the name is entered correctly*") {
+			LogProgress "Can not find database $DatabaseName"
+		}
+		else {
+			LogLastException
+		}
 	}
 }
 
