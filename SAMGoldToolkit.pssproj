@@ -8,7 +8,8 @@
     <RootNamespace>MyApplication</RootNamespace>
     <AssemblyName>MyApplication</AssemblyName>
     <Name>SAMGoldToolkit</Name>
-    <DebugArguments>-UserName jon.mulligan@sam360.com -password rMK~jm@s31297 -Office365 -Verbose</DebugArguments>
+    <DebugArguments>
+    </DebugArguments>
   </PropertyGroup>
   <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
     <DebugSymbols>true</DebugSymbols>
@@ -28,6 +29,7 @@
     <WarningLevel>4</WarningLevel>
   </PropertyGroup>
   <ItemGroup>
+    <Folder Include="Inventory\MAP\" />
     <Folder Include="Network\General\" />
     <Folder Include="Servers\Exchange\" />
     <Folder Include="Hypervisor\" />
@@ -46,6 +48,7 @@
     <Content Include="Network\ActiveDirectory\Get-ADDetails.ps1" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Inventory\MAP\Get-MAPInventoryData.ps1" />
     <Compile Include="Network\General\Get-NetworkNeighborhoodList.ps1" />
     <Compile Include="README.md" />
     <Compile Include="Servers\Exchange\Get-ExchangeDetails.ps1" />
