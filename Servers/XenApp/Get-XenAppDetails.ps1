@@ -12,13 +12,13 @@
 	
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:		$($env:COMPUTERNAME)" #-ForegroundColor Magenta
-	Write-Output "User Name:			$($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:		$($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:		$($host.Version.Major)"
-	Write-Output "PowerShell Version:	$($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:	$($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:			$($PSVersionTable.CLRVersion)"
+	Write-Output "Computer Name:        $($env:COMPUTERNAME)" #-ForegroundColor Magenta
+	Write-Output "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	Write-Output "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+	Write-Output "PowerShell Host:      $($host.Version.Major)"
+	Write-Output "PowerShell Version:   $($PSVersionTable.PSVersion)"
+	Write-Output "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+	Write-Output "CLR Version:          $($PSVersionTable.CLRVersion)"
 }
 
 function LogLastException() {

@@ -52,7 +52,7 @@ function LogLastException()
 
     while ($currentException)
     {
-        write-output "Exception $exceptionCounter:            $currentException"
+        write-output "Exception $exceptionCounter :            $currentException"
         write-output "Exception $exceptionCounter Data:       $($currentException.Data)"
         write-output "Exception $exceptionCounter HelpLink:   $($currentException.HelpLink)"
         write-output "Exception $exceptionCounter HResult:    $($currentException.HResult)"
@@ -68,15 +68,15 @@ function LogLastException()
 
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:			$($env:COMPUTERNAME)"
-	Write-Output "User Name:				$($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:			$($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:			$($host.Version.Major)"
-	Write-Output "PowerShell Version:		$($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:		$($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:				$($PSVersionTable.CLRVersion)"
-	Write-Output "Database Parameter:		$DatabaseName"
-	Write-Output "Required Data:			$RequiredData"
+	Write-Output "Computer Name:            $($env:COMPUTERNAME)"
+	Write-Output "User Name:                $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	Write-Output "Windows Version:          $($OSDetails.Caption)($($OSDetails.Version))"
+	Write-Output "PowerShell Host:          $($host.Version.Major)"
+	Write-Output "PowerShell Version:       $($PSVersionTable.PSVersion)"
+	Write-Output "PowerShell Word size:     $($([IntPtr]::size) * 8) bit"
+	Write-Output "CLR Version:              $($PSVersionTable.CLRVersion)"
+	Write-Output "Database Parameter:       $DatabaseName"
+	Write-Output "Required Data:            $RequiredData"
 }
 
 function LogProgress($progressDescription){

@@ -43,15 +43,15 @@ function LogLastException()
 
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:			$($env:COMPUTERNAME)"
-	Write-Output "User Name:				$($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:			$($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:			$($host.Version.Major)"
-	Write-Output "PowerShell Version:		$($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:		$($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:				$($PSVersionTable.CLRVersion)"
-	Write-Output "Server:	            	$HyperVServer"
-	Write-Output "Required Data:		    $RequiredData"
+	Write-Output "Computer Name:            $($env:COMPUTERNAME)"
+	Write-Output "User Name:                $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	Write-Output "Windows Version:          $($OSDetails.Caption)($($OSDetails.Version))"
+	Write-Output "PowerShell Host:          $($host.Version.Major)"
+	Write-Output "PowerShell Version:       $($PSVersionTable.PSVersion)"
+	Write-Output "PowerShell Word size:     $($([IntPtr]::size) * 8) bit"
+	Write-Output "CLR Version:              $($PSVersionTable.CLRVersion)"
+	Write-Output "Server:                   $HyperVServer"
+	Write-Output "Required Data:            $RequiredData"
 }
 
 function LogProgress($progressDescription){
