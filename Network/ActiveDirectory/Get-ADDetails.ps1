@@ -280,13 +280,12 @@ function CountItems {
 	if (-not $InputObject){
 		return 0
 	}
-	elseif ($InputObject -is [system.array]) {
+	elseif (Get-Member -inputobject $InputObject -name "Count" -Membertype Properties) {
 		return $InputObject.Count
 	}
 	else {
 		return 1
 	}
-
 }
 
 function Get-ADDetails {
