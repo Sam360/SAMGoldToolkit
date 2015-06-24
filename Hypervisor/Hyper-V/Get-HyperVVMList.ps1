@@ -18,7 +18,9 @@ Param(
     [alias("o4")]
     $OutputFile4 = "HyperVExport" + $HyperVServer + "GuestMigration.csv",
 	[ValidateSet("AllData","BasicData","DetailedData")] 
-	$RequiredData = "DetailedData")
+	$RequiredData = "DetailedData",
+	[switch]
+	$Verbose)
 
 function LogLastException()
 {
@@ -74,12 +76,15 @@ function Get-HyperVVMList1 {
 	}
 
 	# Get all virtual machine objects on the server in question
-	$VMs = gwmi -namespace root\virtualization\v2 Msvm_ComputerSystem -computername $HyperVServer -filter "Caption = 'Virtual Machine'" 
+	$VMs = gwmi -namespace $hyperVNamespace Msvm_ComputerSystem -computername $HyperVServer -filter "Caption = 'Virtual Machine'" 
  
 	# Go over each of the virtual machines
 	foreach ($VM in [array] $VMs) 
 	{
-
+		if ($Verbose){
+			LogProgress "Retrieving Basic details for $($VM.ElementName) ($($VM.Name))"
+		}
+		
 		$VMRecord = New-Object -TypeName System.Object
 
 		# Add Most important Values
@@ -103,6 +108,9 @@ function Get-HyperVVMList1 {
 		$VMRecord | Add-Member -MemberType NoteProperty -Name "ProductType" -Value ""
 		$VMRecord | Add-Member -MemberType NoteProperty -Name "NetworkAddressIPv4" -Value ""
 		$VMRecord | Add-Member -MemberType NoteProperty -Name "NetworkAddressIPv6" -Value ""
+		$VMRecord | Add-Member -MemberType NoteProperty -Name "OSEditionId" -Value ""
+		$VMRecord | Add-Member -MemberType NoteProperty -Name "ProcessorArchitecture" -Value ""
+		$VMRecord | Add-Member -MemberType NoteProperty -Name "SuiteMask" -Value ""
 
 		switch ($VM.EnabledState) 
 		{
@@ -123,7 +131,13 @@ function Get-HyperVVMList1 {
 
 		# Get the KVP Object
 		$query = "Associators of {$VM} Where AssocClass=Msvm_SystemDevice ResultClass=Msvm_KvpExchangeComponent"
-		$Kvp = gwmi -namespace root\virtualization\v2 -query $query -computername $HyperVServer
+		try {
+			$Kvp = gwmi -namespace $hyperVNamespace -query $query -computername $HyperVServer
+		}
+		catch {
+			LogProgress "Error retrieving info for VM $($VM.Name)"
+			$Kvp = $null
+		}
 
 		# Converting XML to Object
 		foreach($StrDataItem in $Kvp.GuestIntrinsicExchangeItems)
@@ -134,15 +148,18 @@ function Get-HyperVVMList1 {
 			$AttributeValue = $XmlDataItem.Instance.Property | ?{$_.Name -eq "Data"}
 
 			switch -exact ($AttributeName.Value)
-					{
+			{
 				"FullyQualifiedDomainName"	{$VMRecord.FQDN = $AttributeValue.Value} 
-				"OSName"      			{$VMRecord.OSName = $AttributeValue.Value}
-				"OSVersion"      		{$VMRecord.OSVersion = $AttributeValue.Value}
-				"CSDVersion"      		{$VMRecord.CSDVersion = $AttributeValue.Value}
-				"ProductType"      		{$VMRecord.ProductType = $AttributeValue.Value}
+				"OSName"      				{$VMRecord.OSName = $AttributeValue.Value}
+				"OSVersion"      			{$VMRecord.OSVersion = $AttributeValue.Value}
+				"CSDVersion"      			{$VMRecord.CSDVersion = $AttributeValue.Value}
+				"ProductType"      			{$VMRecord.ProductType = $AttributeValue.Value}
 				"NetworkAddressIPv4"      	{$VMRecord.NetworkAddressIPv4 = $AttributeValue.Value}
-				"NetworkAddressIPv6"      	{$VMRecord.NetworkAddressIPv6 = $AttributeValue.Value}		
-					}
+				"NetworkAddressIPv6"      	{$VMRecord.NetworkAddressIPv6 = $AttributeValue.Value}
+				"OSEditionId"      			{$VMRecord.OSEditionId = $AttributeValue.Value}
+				"ProcessorArchitecture"     {$VMRecord.ProcessorArchitecture = $AttributeValue.Value}
+				"SuiteMask"      			{$VMRecord.SuiteMask = $AttributeValue.Value}		
+			}
 		}
 
 		$VMRecordList += $VMRecord
@@ -164,7 +181,20 @@ function Get-HyperVVMList2 {
 }
 
 function Get-HyperVVMMigrationInfo {
-	Get-WinEvent Microsoft-Windows-Hyper-V-VMMS-Admin -ComputerName $HyperVServer | Where Id -like "2041*" | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
+	
+LogProgress "Retrieving HyperV VM Events"
+	
+	$AllVMEvents = Get-WinEvent -LogName "Microsoft-Windows-Hyper-V-VMMS-Admin" -ComputerName $HyperVServer
+	if($Verbose){
+		LogProgress "Retrieved $($AllVMEvents.Count) HyperV VM Events"
+	}
+
+	$AllVMMigrationEvents = $AllVMEvents | where {$_.Id -like "2041*"} 
+	if($Verbose){
+		LogProgress "Retrieved $($AllVMMigrationEvents.Count) HyperV VM Migration Events"
+	}
+
+	$AllVMMigrationEvents | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
 }
 
 function Get-HyperVVMList {
