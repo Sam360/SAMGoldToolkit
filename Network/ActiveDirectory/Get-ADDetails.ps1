@@ -12,25 +12,36 @@
 	[alias("o2")]
     $OutputFile2 = "ADDomainTrusts.csv",
 	[alias("o3")]
-    $OutputFile3 = "ADUsers.csv",
+    $OutputFile3 = "ADDomainNETBIOS.csv",
 	[alias("o4")]
-    $OutputFile4 = "ADDevices.csv",
+    $OutputFile4 = "ADDomainControllers.csv",
+	[alias("o5")]
+    $OutputFile5 = "ADUsers.csv",
+	[alias("o6")]
+    $OutputFile6 = "ADDevices.csv",
+	[alias("o7")]
+    $OutputFile7 = "ADExchangeServers.csv",
+	[alias("o8")]
+    $OutputFile8 = "ADActiveSynceDevices.csv",
 	[alias("r")]
-    [string]$SearchRoot = "")
+    [string]$SearchRoot = "",
+	[switch]
+	$Verbose)
  
 
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:		$($env:COMPUTERNAME)" #-ForegroundColor Magenta
-	Write-Output "User Name:			$($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:		$($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:		$($host.Version.Major)"
-	Write-Output "PowerShell Version:	$($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:	$($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:			$($PSVersionTable.CLRVersion)"
+	Write-Output "Computer Name:                   $($env:COMPUTERNAME)" #-ForegroundColor Magenta
+	Write-Output "User Name:                       $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	Write-Output "Windows Version:                 $($OSDetails.Caption)($($OSDetails.Version))"
+	Write-Output "PowerShell Host:                 $($host.Version.Major)"
+	Write-Output "PowerShell Version:              $($PSVersionTable.PSVersion)"
+	Write-Output "PowerShell Word size:            $($([IntPtr]::size) * 8) bit"
+	Write-Output "CLR Version:                     $($PSVersionTable.CLRVersion)"
 }
 
 function LogProgress($progressDescription){
+	Write-Output ""
     $output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
 	$output += $progressDescription
@@ -79,28 +90,41 @@ function SearchAD ($searchFilter, [string[]]$searchAttributes, [switch]$useNamin
 	$objSearcher.Filter = $searchFilter
 	$objSearcher.SearchScope = "Subtree"
 
-	($searchAttributes | %{$objSearcher.PropertiesToLoad.Add($_)}) | out-null
-
+	if ($searchAttributes) {
+		($searchAttributes | %{$objSearcher.PropertiesToLoad.Add($_)}) | out-null
+	}
+	
 	$objSearcher.FindAll() | % {
 	    $pso = New-Object PSObject
 		$value = ""
 	    $_.Properties.GetEnumerator() | % {
-			if ($_.Name -eq "objectsid") {
-				$Counter = 0
-				$Ba = New-Object Byte[] $_.Value[0].Length
-				$_.Value[0] | %{$Ba[$Counter++] = $_}
-				$value = (New-Object System.Security.Principal.SecurityIdentifier($Ba, 0)).Value
+			try {
+				if ($_.Name -eq "objectsid") {
+					$Counter = 0
+					$Ba = New-Object Byte[] $_.Value[0].Length
+					$_.Value[0] | %{$Ba[$Counter++] = $_}
+					$value = (New-Object System.Security.Principal.SecurityIdentifier($Ba, 0)).Value
+				}
+				elseif ($_.Name -eq "objectguid") {
+					$Counter = 0
+					$Ba = New-Object Byte[] $_.Value[0].Length
+					$_.Value[0] | %{$Ba[$Counter++] = $_}
+					$value = (New-Object System.Guid -ArgumentList @(,$Ba)).ToString()
+				}
+				elseif (($_.Name -eq "lastLogon") -or ($_.Name -eq "lastLogonTimestamp")) {
+					$value = [DateTime]::FromFileTime($_.Value[0]).ToString('yyyy-MM-dd hh:mm:ss')
+				}
+				elseif ($_.Name -eq "servicePrincipalName"){
+					$value = $_.Value -join ";"
+				}
+				else {
+					$value = ($_.Value | foreach {$_})
+				}
+				Add-Member -InputObject $pso -MemberType NoteProperty -Name $_.Name -Value $value
 			}
-			elseif ($_.Name -eq "objectguid") {
-				$Counter = 0
-				$Ba = New-Object Byte[] $_.Value[0].Length
-				$_.Value[0] | %{$Ba[$Counter++] = $_}
-				$value = (New-Object System.Guid -ArgumentList @(,$Ba)).ToString()
+			catch {
+				LogLastException
 			}
-			else {
-				$value = ($_.Value | foreach {$_})
-			}
-	        Add-Member -InputObject $pso -MemberType NoteProperty -Name $_.Name -Value $value
 	    } 
 	    $searchResults = $searchResults + $pso
 	}
@@ -108,14 +132,161 @@ function SearchAD ($searchFilter, [string[]]$searchAttributes, [switch]$useNamin
 	return $searchResults | select-object $searchAttributes
 }
 
+function GetDirectoryContext {
+
+	if ($DirectoryContext) {
+		return $DirectoryContext
+	}
+
+	if (-not $DomainDNS) {
+		$DirectoryContext = new-object 'System.DirectoryServices.ActiveDirectory.DirectoryContext'("domain")
+		return $DirectoryContext
+	}
+
+	if (-not $UserName) {
+		$DirectoryContext = new-object 'System.DirectoryServices.ActiveDirectory.DirectoryContext'("forest", $DomainDNS)
+		return $DirectoryContext
+	}
+
+	$DirectoryContext = new-object 'System.DirectoryServices.ActiveDirectory.DirectoryContext'("domain", $DomainDNS, $UserName, $Password)
+	return $DirectoryContext
+}
+
 function GetDomainInfo {
-	#Get a list of domains in the forest
-	$forest = [System.DirectoryServices.ActiveDirectory.Forest]::GetCurrentForest()
-	$forest.Domains | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
+	# Get a list of domains in the forest
+	#$DC = GetDirectoryContext
+
+	$domain = [System.DirectoryServices.ActiveDirectory.Domain]::GetCurrentDomain()
+	$forest = $domain.Forest
 	
-	$domainTrustAttributes = "dnsroot", "ncname", "NETBIOSName", "description", "whenChanged", "whenCreated"
-	$domainTrusts = SearchAD -searchAttributes $domainTrustAttributes -searchFilter "(NETBIOSName=*)" -useNamingContext
+	if ($Verbose){
+		Write-Output "Current Forest:                  $forest"
+		Write-Output "Forest Root Domain:              $($forest.RootDomain)"
+		$forestDomainNames = ($forest.Domains | select -expand Name) -join ", "
+		Write-Output "Forest Domains:                  $(CountItems($forest.Domains)) ($forestDomainNames)"
+
+		Write-Output "Current Domain:                  $domain"
+		$domainControllerNames = ($domain.DomainControllers | select -expand Name) -join ", "
+		Write-Output "Domain Controllers:              $(CountItems($domain.DomainControllers)) ($domainControllerNames)"
+	}
+	
+	if ($forest.Domains) {
+		$forest.Domains | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
+	}
+	
+	$domainTrustAttributes = "name", "trustpartner", "flatname", "distinguishedname", "adspath", "trustdirection", "trustattributes", "trusttype", "trustposixoffset", "instancetype", "whencreated", "whenchanged"
+	$domainTrusts = SearchAD -searchFilter "(objectClass=trustedDomain)" -searchAttributes $domainTrustAttributes
 	$domainTrusts | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
+
+	$domainNetBIOSDetailsAttributes = "name", "netbiosname", "ncname", "adspath", "dnsroot", "objectguid", "whencreated", "whenchanged"
+	$domainNetBIOSDetails = SearchAD -searchFilter "(NetBIOSName=*)" -searchAttributes $domainNetBIOSDetailsAttributes -useNamingContext
+	$domainNetBIOSDetails | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
+
+	if ($domain.DomainControllers){
+		$domain.DomainControllers | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
+	}
+}
+
+function GetUserInfo {
+	$userAttributes = "sAMAccountName", "objectSid", "objectGUID", "displayName", "departmentNumber", "company", "department", "distinguishedName", "lastLogon", "lastLogonTimestamp", "logonCount", "mail", "telephoneNumber", "physicalDeliveryOfficeName", "description", "whenChanged", "whenCreated", "msExchMailboxGuid"
+	$userList = SearchAD -searchAttributes $userAttributes -searchFilter "(&(objectCategory=person)(objectClass=user))" 
+	$userList  | export-csv $OutputFile5 -notypeinformation -Encoding UTF8
+
+	if ($Verbose){
+		Write-Output "User Count:                      $($userList.Count)"
+
+		$cutOfftime = (Get-Date).AddDays(-30).ToString('yyyy-MM-dd hh:mm:ss')
+		$activeUsers = $userList | where {(GetMoreRecentDate -date1 $_.lastLogon -date2 $_.lastLogonTimestamp) -gt $cutOfftime}
+		Write-Output "User Count (Active):             $(CountItems($activeUsers))"
+
+		$exchangeMailBoxes = $userList | where {$_.msExchMailboxGuid}
+		Write-Output "Exchange Mailbox Count:          $((($exchangeMailBoxes) | measure-object).count)"
+		$activeExchangeMailBoxes = $exchangeMailBoxes | where {(GetMoreRecentDate -date1 $_.lastLogon -date2 $_.lastLogonTimestamp) -gt $cutOfftime}
+		Write-Output "Exchange Mailbox Count (Active): $(CountItems($activeExchangeMailBoxes))"
+	}
+}
+
+function GetDeviceInfo {
+	$deviceAttributes = "name", "objectSid", "objectGUID", "operatingSystem", "operatingSystemVersion", "operatingSystemServicePack", "lastLogon", "lastLogonTimeStamp", "ADsPath", "location", "dNSHostName", "description", "whenChanged", "whenCreated","servicePrincipalName"
+	$deviceList = SearchAD -searchAttributes $deviceAttributes -searchFilter "(objectClass=computer)" 
+	$deviceList | export-csv $OutputFile6 -notypeinformation -Encoding UTF8
+
+	if ($Verbose){
+		Write-Output "Device Count:                    $($deviceList.Count)"
+
+		$cutOfftime = (Get-Date).AddDays(-30).ToString('yyyy-MM-dd hh:mm:ss')
+		$activeDevices = $deviceList | where {(GetMoreRecentDate -date1 $_.lastLogon -date2 $_.lastLogonTimestamp) -gt $cutOfftime}
+		Write-Output "Device Count (Active):           $(CountItems($activeDevices))"
+
+		$clusters = $deviceList | where {$_.servicePrincipalName -ne $null -and
+											$_.servicePrincipalName.Contains("MSServerCluster/") }
+		$clusterNames = ($clusters | select -expand Name) -join ", "
+		Write-Output "Clusters:                        $(CountItems($clusters)) ($clusterNames)"
+
+		$hyperVHosts = $deviceList | where { $_.servicePrincipalName -ne $null -and (
+							$_.servicePrincipalName.Contains("Microsoft Virtual Console Service/") -or 
+							$_.servicePrincipalName.Contains("Microsoft Virtual System Migration Service/")) }
+		$hyperVHostNames = ($hyperVHosts | select -expand Name) -join ", "
+		Write-Output "HyperV Hosts:                    $(CountItems($hyperVHosts)) ($hyperVHostNames)"
+
+		$exchangeServers = $deviceList | where { $_.servicePrincipalName -ne $null -and (
+							$_.servicePrincipalName.Contains("exchangeMDB/") -or 
+							$_.servicePrincipalName.Contains("exchangeRFR/")) } 
+		$exchangeServerNames = ($exchangeServers | select -expand Name) -join ", "
+		Write-Output "Exchange Servers:                $(CountItems($exchangeServers)) ($exchangeServerNames)"
+
+		Write-Output ""
+		Write-Output "Operating System Counts:"
+		$deviceList | Group-Object operatingSystem | Select Name,Count | Sort Count -desc | ft -autosize | out-string
+	}
+}
+
+function GetExchangeInfo {
+	$exchangeServerAttributes = "name", "objectGUID", "msexchproductid", "msexchcurrentserverroles", "type", "msexchserversite", "usncreated", "ADsPath", "msexchversion", "serialnumber", "msexchserverrole"
+	$exchangeServers = SearchAD -searchAttributes $exchangeServerAttributes -searchFilter "(objectCategory=msExchExchangeServer)" -useNamingContext
+	if ($exchangeServers) {
+		$exchangeServers | export-csv $OutputFile7 -notypeinformation -Encoding UTF8
+	}
+	
+	$activeSyncDeviceAttributes = "name", "objectGUID", "ADsPath", "description", "whenChanged", "whenCreated","msExchDeviceEASVersion", "msExchDeviceFriendlyName", "msExchDeviceID", "msExchDeviceIMEI", "msExchDeviceMobileOperator", "msExchDeviceModel", "msExchDeviceOS", "msExchDeviceOSLanguage", "msExchDeviceTelephoneNumber", "msExchDeviceType", "msExchLastExchangeChangedTime", "msExchLastUpdateTime"
+	$activeSyncDevices = SearchAD -searchAttributes $activeSyncDeviceAttributes -searchFilter "(objectClass=msExchActiveSyncDevice)"
+	if ($activeSyncDevices) {
+		$activeSyncDevices | export-csv $OutputFile8 -notypeinformation -Encoding UTF8
+	}
+	
+	if ($Verbose){
+		Write-Output "Active Sync Devices:"
+		$activeSyncDevices | Group-Object msExchDeviceType | Select Name,Count | Sort Count -desc | ft -autosize | out-string
+	}
+}
+
+function GetMoreRecentDate {
+	Param(
+    [string]$Date1 = "",
+	[string]$Date2 = "")
+
+	if ($Date1 -gt $Date2){
+		return $Date1
+	}
+	else {
+		return $Date2
+	}
+}
+
+function CountItems {
+	Param(
+    $InputObject)
+
+	if (-not $InputObject){
+		return 0
+	}
+	elseif ($InputObject -is [system.array]) {
+		return $InputObject.Count
+	}
+	else {
+		return 1
+	}
+
 }
 
 function Get-ADDetails {
@@ -126,14 +297,13 @@ function Get-ADDetails {
 		GetDomainInfo
 		
 		LogProgress "Getting User Info"
-		$userAttributes = "sAMAccountName", "objectSid", "objectGUID", "displayName", "departmentNumber", "company", "department", "distinguishedName", "lastLogon", "lastLogonTimestamp", "logonCount", "mail", "telephoneNumber", "physicalDeliveryOfficeName", "description", "whenChanged", "whenCreated"
-		$userList = SearchAD -searchAttributes $userAttributes -searchFilter "(&(objectCategory=person)(objectClass=user))" 
-		$userList  | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
+		GetUserInfo
 		
 		LogProgress "Getting Device Info"
-		$deviceAttributes = "name", "objectSid", "objectGUID", "operatingSystem", "operatingSystemVersion", "operatingSystemServicePack", "lastLogon", "lastLogonTimeStamp", "ADsPath", "location", "dNSHostName", "description", "whenChanged", "whenCreated"
-		$deviceList = SearchAD -searchAttributes $deviceAttributes -searchFilter "(objectClass=computer)" 
-		$deviceList | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
+		GetDeviceInfo
+
+		LogProgress "Getting Exchange Info"
+		GetExchangeInfo
 		
 		LogProgress "Complete"
 	}
