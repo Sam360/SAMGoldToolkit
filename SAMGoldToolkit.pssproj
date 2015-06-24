@@ -50,6 +50,7 @@
   <ItemGroup>
     <Compile Include="Inventory\MAP\Get-MAPInventoryData.ps1" />
     <Compile Include="Network\General\Get-NetworkNeighborhoodList.ps1" />
+    <Compile Include="Network\General\Ping-Address.ps1" />
     <Compile Include="README.md" />
     <Compile Include="Servers\Exchange\Get-ExchangeDetails.ps1" />
     <Compile Include="Hypervisor\Hyper-V\Get-HyperVVMList.ps1" />
