@@ -2,7 +2,7 @@
  # 
  # 	Get-ADDetails
  # 	SAM Gold Toolkit
- #	Original Source: Sam360
+ #	Original Source: Jon Mulligan (Sam360)
  #
  ##########################################################################
  
@@ -22,12 +22,38 @@
 	[alias("o7")]
     $OutputFile7 = "ADExchangeServers.csv",
 	[alias("o8")]
-    $OutputFile8 = "ADActiveSynceDevices.csv",
+    $OutputFile8 = "ADActiveSyncDevices.csv",
 	[alias("r")]
     [string]$SearchRoot = "",
 	[switch]
 	$Verbose)
  
+<#
+.SYNOPSIS
+Retrieves domain, user, device, server & mobile device data from Active Directory
+
+.DESCRIPTION
+The Get-ADDetails script queries the local domain for domain, user, device, server 
+& mobile device data and produces 8 CSV files
+	1)    ADDomains.csv - One record per domain
+    2)    ADDomainTrusts.csv - One record per external trusted domain
+	3)    ADDomainNETBIOS.csv - One record per domain (Includes domain NetBIOS name)
+	4)    ADDomainControllers.csv - One record per domain controller for current domain
+	5)    ADUsers.csv - One record per domain user
+	6)    ADDevices.csv - One record per domain computer
+	7)    ADExchangeServers.csv - One record per Exchange Server
+	8)    ADActiveSyncDevices.csv - One record per Exchange Active Sync Device
+
+    Files are written to current working directory
+
+.PARAMETER Verbose 
+Flag - Display extra info to screen
+
+.EXAMPLE
+Get all domain, user, device, server & mobile device data from current domain
+Get-ADDetails –Verbose
+
+#>
 
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
@@ -184,6 +210,11 @@ function GetDomainInfo {
 
 	if ($domain.DomainControllers){
 		$domain.DomainControllers | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
+	}
+
+	if ($Verbose){
+		$trustDomainNames = ($domainTrusts | select -expand Name) -join ", "
+		Write-Output "Trusted Domains:                 $(CountItems($domainTrusts)) ($trustDomainNames)"
 	}
 }
 

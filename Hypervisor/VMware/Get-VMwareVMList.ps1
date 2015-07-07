@@ -2,7 +2,7 @@
  # 
  # Get-VMwareVMList
  # SAM Gold Toolkit
- # Original Source: Sam360
+ # Original Source: Jon Mulligan (Sam360)
  #
  ##########################################################################
  
@@ -18,6 +18,39 @@ Param(
 	[alias("server")]
 	$VMserver = $(Throw "Missing Parameter: Server must be specified"))
 	
+<#
+.SYNOPSIS
+Retrieves physical host and virtual machine data from a VMware vSphere or vCenter server 
+
+.DESCRIPTION
+The Get-VMwareVMList script queries a single vSphere or vCenter server and produces a CSV file
+including virtual machine and physical host details. The file (VMwareData.csv) contains one 
+record per virtual machine. Data collected includes
+VM Name, CPU, Memory, Network details &
+Physical host Name, CPU, Memory, Network, vMotion details
+
+If a vCenter server is queried, details for all VMs in the farm are retrieved.
+
+The file is written to current working directory
+
+.PARAMETER Server 
+Host name of vSphere or vCenter server to scan
+
+.PARAMETER Username
+VMware Username (Required)
+e.g. root (for vSphere server i.e. local account)
+     jon.mulligan (for vCenter server i.e. Windows domain account)
+
+.PARAMETER Password
+VMware Password (Required)
+
+.EXAMPLE
+Get all guest & host info from from the farm managed by the vSphere server 'Reliant'. 
+Get-VMwareVMList –VMserver Reliant
+
+.NOTES
+
+#>
 
 function LogLastException()
 {

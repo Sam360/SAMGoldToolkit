@@ -35,6 +35,59 @@
 	$RequiredData = "AllData",
 	[ValidateSet("Both","RemoteSession","SnapIn")] 
 	$ConnectionMethod = "Both")
+
+<#
+.SYNOPSIS
+Retrieves Exchange server, mail box, ActiveSync device and CAL information from an Exchange server
+
+.DESCRIPTION
+The Get-ExchangeDetails script queries a single Exchange server and produces up to 5 CSV files
+	1)    ExchangeServerDetails.csv - One record per Exchange Server in the farm
+    2)    ExchangeMailBoxes.csv - One record per MailBox
+	3)    ExchangeDevices.csv - One record per ActiveSync device
+	4)    ExchangeCALs.csv - General CAL requirement details 
+    5)    ExchangeCALDetails.csv - Lists all servers and MailBoxes that require a license and 
+	      the type of license required
+
+    Files are written to current working directory
+
+.PARAMETER Server 
+Host name of Exchange server to scan
+
+.PARAMETER Office365
+Flag. Query Office365 hosted Exchange environment. If this flag is set, the parameter 'Server' is ignored
+
+.PARAMETER Username
+Exchange Server Username
+
+.PARAMETER Password
+Exchange Server Password
+
+.PARAMETER Verbose
+Display extra progress information on screen
+
+.PARAMETER CALScriptVersion
+This script contains multiple embedded scripts in order to determine required CAL count for the server.
+The script attempts to pick the correct embedded script based on the edition of the selected Exchange 
+server. However, a different embedded script can be selected manually. Allowed options are..
+"2007","2010","2010SP1","2010SP3","2013"
+
+.PARAMETER RequiredData
+By default the script collects Exchange server, mail box, ActiveSync device and CAL information from the 
+selected Exchange server. It's possible to collect subsets of the data. Possible options are...
+"AllData","ServerData","EntityData","UtilizationData","CALData"
+
+.EXAMPLE
+Get all guest, host and migration info from Hyper-V server 'Defiant'. 
+Get-HyperVVMList –HyperVServer Defiant
+
+.NOTES
+This script supports Exchange server 2007 onwards. There are some limitations on what data can be
+collected from different versions of Exchange server remotely. If the script fails to execute remotely
+try
+	1)	Specify a username and password (even if they are the details of the current user)
+	2)  Execute the script locally on the Exchange Server
+#>
 	
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
