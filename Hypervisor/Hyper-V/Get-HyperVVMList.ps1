@@ -12,16 +12,16 @@ Retrieves physical host, virtual machine and virtual machine migration data from
 
 .DESCRIPTION
 The Get-HyperVVMList script queries a single HyperV server and produces 4 CSV files
-	1)    HyperVExportBasic.csv - One record per virtual machine including fields like 
-	      VM name, IP, OS, Enabled state, Physical host name etc. The data is retrieved through WMI
+    1)    HyperVExportBasic.csv - One record per virtual machine including fields like 
+          VM name, IP, OS, Enabled state, Physical host name etc. The data is retrieved through WMI
     2)    HyperVExportGuests.csv - One record per virtual machine. The data is retrieved through 
-	      PowerShell and requires minimum Windows Server 2012 R2
-	3)    HyperVExportHosts.csv - One record per Hyper-V server. The data is retrieved through 
-	      PowerShell and requires minimum Windows Server 2012 R2
-	4)    HyperVExportGuestMigration.csv - One record per migration event. The data is retrieved through 
-	      PowerShell and requires minimum Windows Server 2012 R2
+          PowerShell and requires minimum Windows Server 2012 R2
+    3)    HyperVExportHosts.csv - One record per Hyper-V server. The data is retrieved through 
+          PowerShell and requires minimum Windows Server 2012 R2
+    4)    HyperVExportGuestMigration.csv - One record per migration event. The data is retrieved through 
+          PowerShell and requires minimum Windows Server 2012 R2
 
-    Files are written to current working directory
+Files are written to current working directory
 
 .PARAMETER Server 
 Host name of Hyper-V server to scan

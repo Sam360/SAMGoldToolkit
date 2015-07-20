@@ -6,20 +6,7 @@
  #
  ##########################################################################
  
- Param(
-	[alias("username")]
-	$XenUsername = $(Throw "Missing Parameter: Username must be specified"),
-	[alias("password")]
-	$XenPassword = $(Throw "Missing Parameter: Password must be specified"),
-	[alias("server")]
-    $XenServer = $(Throw "Missing Parameter: Server must be specified"),
-	[alias("o1")]
-	$OutputFile1 = "XenHostList" + $XenServer + ".txt",
-	[alias("o2")]
-	$OutputFile2 = "XenVMList" + $XenServer + ".txt"
-    )
-
-<#
+ <#
 .SYNOPSIS
 Retrieves physical host and virtual machine data from a XenServer Hypervisor 
 
@@ -50,9 +37,20 @@ XenServer Password (Required)
 Get all guest & host info from from the farm that includes the XenServer hypervisor 'Omaha'. 
 Get-XenServerVMData –VMserver Omaha
 
-.NOTES
-
 #>
+
+ Param(
+	[alias("username")]
+	$XenUsername = $(Throw "Missing Parameter: Username must be specified"),
+	[alias("password")]
+	$XenPassword = $(Throw "Missing Parameter: Password must be specified"),
+	[alias("server")]
+    $XenServer = $(Throw "Missing Parameter: Server must be specified"),
+	[alias("o1")]
+	$OutputFile1 = "XenHostList" + $XenServer + ".txt",
+	[alias("o2")]
+	$OutputFile2 = "XenVMList" + $XenServer + ".txt"
+    )
 
 $xeExe = "C:\Program Files (x86)\Citrix\XenCenter\xe.exe"
 

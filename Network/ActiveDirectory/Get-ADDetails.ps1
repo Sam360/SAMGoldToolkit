@@ -6,29 +6,7 @@
  #
  ##########################################################################
  
- Param(
-    [alias("o1")]
-    $OutputFile1 = "ADDomains.csv",
-	[alias("o2")]
-    $OutputFile2 = "ADDomainTrusts.csv",
-	[alias("o3")]
-    $OutputFile3 = "ADDomainNETBIOS.csv",
-	[alias("o4")]
-    $OutputFile4 = "ADDomainControllers.csv",
-	[alias("o5")]
-    $OutputFile5 = "ADUsers.csv",
-	[alias("o6")]
-    $OutputFile6 = "ADDevices.csv",
-	[alias("o7")]
-    $OutputFile7 = "ADExchangeServers.csv",
-	[alias("o8")]
-    $OutputFile8 = "ADActiveSyncDevices.csv",
-	[alias("r")]
-    [string]$SearchRoot = "",
-	[switch]
-	$Verbose)
- 
-<#
+ <#
 .SYNOPSIS
 Retrieves domain, user, device, server & mobile device data from Active Directory
 
@@ -54,6 +32,28 @@ Get all domain, user, device, server & mobile device data from current domain
 Get-ADDetails –Verbose
 
 #>
+
+ Param(
+    [alias("o1")]
+    [string] $OutputFile1 = "ADDomains.csv",
+	[alias("o2")]
+    [string] $OutputFile2 = "ADDomainTrusts.csv",
+	[alias("o3")]
+    [string] $OutputFile3 = "ADDomainNETBIOS.csv",
+	[alias("o4")]
+    [string] $OutputFile4 = "ADDomainControllers.csv",
+	[alias("o5")]
+    [string] $OutputFile5 = "ADUsers.csv",
+	[alias("o6")]
+    [string] $OutputFile6 = "ADDevices.csv",
+	[alias("o7")]
+    [string] $OutputFile7 = "ADExchangeServers.csv",
+	[alias("o8")]
+    [string] $OutputFile8 = "ADActiveSyncDevices.csv",
+	[alias("r")]
+    [string]$SearchRoot = "",
+	[switch]
+	$Verbose)
 
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem

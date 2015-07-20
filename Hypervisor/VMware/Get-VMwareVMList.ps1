@@ -5,20 +5,8 @@
  # Original Source: Jon Mulligan (Sam360)
  #
  ##########################################################################
- 
 
-Param(
-	[switch]$TestCredentials,
-	[alias("o1")]
-    $OutputFile1 = "VMwareData.csv",
-	[alias("username")]
-	$VMwareUsername = $(Throw "Missing Parameter: Username must be specified"),
-	[alias("password")]
-	$VMwarePassword = $(Throw "Missing Parameter: Password must be specified"),
-	[alias("server")]
-	$VMserver = $(Throw "Missing Parameter: Server must be specified"))
-	
-<#
+ <#
 .SYNOPSIS
 Retrieves physical host and virtual machine data from a VMware vSphere or vCenter server 
 
@@ -51,6 +39,17 @@ Get-VMwareVMList –VMserver Reliant
 .NOTES
 
 #>
+
+Param(
+	[switch]$TestCredentials,
+	[alias("o1")]
+    $OutputFile1 = "VMwareData.csv",
+	[alias("username")]
+	$VMwareUsername = $(Throw "Missing Parameter: Username must be specified"),
+	[alias("password")]
+	$VMwarePassword = $(Throw "Missing Parameter: Password must be specified"),
+	[alias("server")]
+	$VMserver = $(Throw "Missing Parameter: Server must be specified"))
 
 function LogLastException()
 {

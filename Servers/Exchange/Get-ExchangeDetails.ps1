@@ -8,35 +8,7 @@
  #
  ##########################################################################
 
- Param(
-	[alias("server")]
-	$ExchangeServer = $env:computerName,
-	[alias("o1")]
-	$OutputFile1 = "ExchangeServerDetails" + $ExchangeServer + ".csv",
-	[alias("o2")]
-	$OutputFile2 = "ExchangeMailBoxes" + $ExchangeServer + ".csv",
-	[alias("o3")]
-	$OutputFile3 = "ExchangeDevices" + $ExchangeServer + ".csv",
-	[alias("o4")]
-	$OutputFile4 = "ExchangeCALs" + $ExchangeServer + ".csv",
-	[alias("o5")]
-	$OutputFile5 = "ExchangeCALDetails" + $ExchangeServer + ".csv",
-	$UserName,
-	$Password,
-	[switch]
-	$Office365,
-	[switch]
-	$Verbose,
-	[switch]
-	$UseSSL,
-	[ValidateSet("2007","2010","2010SP1","2010SP3","2013")]
-	$CALScriptVersion,
-	[ValidateSet("AllData","ServerData","EntityData","UtilizationData","CALData")] 
-	$RequiredData = "AllData",
-	[ValidateSet("Both","RemoteSession","SnapIn")] 
-	$ConnectionMethod = "Both")
-
-<#
+ <#
 .SYNOPSIS
 Retrieves Exchange server, mail box, ActiveSync device and CAL information from an Exchange server
 
@@ -88,6 +60,34 @@ try
 	1)	Specify a username and password (even if they are the details of the current user)
 	2)  Execute the script locally on the Exchange Server
 #>
+
+ Param(
+	[alias("server")]
+	$ExchangeServer = $env:computerName,
+	[alias("o1")]
+	$OutputFile1 = "ExchangeServerDetails" + $ExchangeServer + ".csv",
+	[alias("o2")]
+	$OutputFile2 = "ExchangeMailBoxes" + $ExchangeServer + ".csv",
+	[alias("o3")]
+	$OutputFile3 = "ExchangeDevices" + $ExchangeServer + ".csv",
+	[alias("o4")]
+	$OutputFile4 = "ExchangeCALs" + $ExchangeServer + ".csv",
+	[alias("o5")]
+	$OutputFile5 = "ExchangeCALDetails" + $ExchangeServer + ".csv",
+	$UserName,
+	$Password,
+	[switch]
+	$Office365,
+	[switch]
+	$Verbose,
+	[switch]
+	$UseSSL,
+	[ValidateSet("2007","2010","2010SP1","2010SP3","2013")]
+	$CALScriptVersion,
+	[ValidateSet("AllData","ServerData","EntityData","UtilizationData","CALData")] 
+	$RequiredData = "AllData",
+	[ValidateSet("Both","RemoteSession","SnapIn")] 
+	$ConnectionMethod = "Both")
 	
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
