@@ -55,10 +55,10 @@ function LogEnvironmentDetails {
 }
 
 function LogProgress($progressDescription){
-    $output = Get-Date -Format HH:mm:ss.ff
+	$output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
 	$output += $progressDescription
-    write-output $output
+	write-output $output
 }
 
 function GetConnectionString {
@@ -79,12 +79,13 @@ function Invoke-SQL {
 		[string] $resultsFilePath = $(throw "Please specify a file to save results in.")
       )
 	
-	Remove-Item $resultsFilePath
+	If (Test-Path -path $resultsFilePath) {
+		Remove-Item $resultsFilePath }
 	$fileWriter = New-Object System.IO.StreamWriter $resultsFilePath
 
-    $connection = new-object system.data.SqlClient.SQLConnection(GetConnectionString)
-    $command = new-object system.data.sqlclient.sqlcommand($sqlCommand,$connection)
-    $connection.Open()
+	$connection = new-object system.data.SqlClient.SQLConnection(GetConnectionString)
+	$command = new-object system.data.sqlclient.sqlcommand($sqlCommand,$connection)
+	$connection.Open()
 	
 	$reader = $command.ExecuteReader()
 	
@@ -152,6 +153,7 @@ SELECT
 	,[Bios].[SerialNumber0] AS [BiosSerialNumber]  
 	,[Bios].[ReleaseDate0] AS [BiosReleaseDate]
 	,[NetworkAdapter].[MacAddress] AS [MacAddress]
+	,[NetworkAdapter1].[IPAddress] AS [IPAddress]
 	,CONVERT(varchar(19), [System].[Last_Logon_Timestamp0], 126) AS [LastLogon]
 	,CONVERT(varchar(19), [WorkstationStatus].[LastHWScan], 126) AS [LastHWScan]
 	,CONVERT(varchar(19), [SoftwareInventoryStatus].[LastScanDate], 126) AS [LastSWScan]
@@ -265,7 +267,7 @@ OUTER APPLY
 		SELECT DISTINCT
 			[Network].[MACAddress0] + ';'
 		FROM 
-			[dbo].[v_GS_Network_Adapter] AS [Network]
+			[dbo].[v_GS_NETWORK_ADAPTER] AS [Network]
 		WHERE 
 			[Network].[ResourceID] = [System].[ResourceID]
 		AND
@@ -275,7 +277,21 @@ OUTER APPLY
 		ORDER BY 
 			[Network].[MACAddress0] + ';'
 		FOR XML PATH ('')
-	) AS [NetworkAdapter] (MacAddress);
+	) AS [NetworkAdapter] (MacAddress)
+OUTER APPLY
+	(
+		SELECT DISTINCT
+			[NetworkConfig].[IPAddress0] + ';'
+		FROM 
+			[dbo].[v_GS_NETWORK_ADAPTER_CONFIGURATION] AS [NetworkConfig]
+		WHERE 
+			[NetworkConfig].[ResourceID] = [System].[ResourceID]
+		AND
+			[NetworkConfig].[IPAddress0] IS NOT NULL 
+		AND
+			[NetworkConfig].[IPAddress0] NOT IN ('0.0.0.0')
+		FOR XML PATH ('')
+	) AS [NetworkAdapter1] (IPAddress);
 "@
 
 $sqlCommand2 = @"
