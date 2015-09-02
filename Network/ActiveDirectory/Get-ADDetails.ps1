@@ -14,7 +14,7 @@ Retrieves domain, user, device, server & mobile device data from Active Director
 The Get-ADDetails script queries the local domain for domain, user, device, server 
 & mobile device data and produces 8 CSV files
 	1)    ADDomains.csv - One record per domain
-    2)    ADDomainTrusts.csv - One record per external trusted domain
+	2)    ADDomainTrusts.csv - One record per external trusted domain
 	3)    ADDomainNETBIOS.csv - One record per domain (Includes domain NetBIOS name)
 	4)    ADDomainControllers.csv - One record per domain controller for current domain
 	5)    ADUsers.csv - One record per domain user
@@ -29,29 +29,29 @@ Flag - Display extra info to screen
 
 .EXAMPLE
 Get all domain, user, device, server & mobile device data from current domain
-Get-ADDetails –Verbose
+Get-ADDetails â€“Verbose
 
 #>
 
  Param(
-    [alias("o1")]
-    [string] $OutputFile1 = "ADDomains.csv",
+	[alias("o1")]
+	[string] $OutputFile1 = "ADDomains.csv",
 	[alias("o2")]
-    [string] $OutputFile2 = "ADDomainTrusts.csv",
+	[string] $OutputFile2 = "ADDomainTrusts.csv",
 	[alias("o3")]
-    [string] $OutputFile3 = "ADDomainNETBIOS.csv",
+	[string] $OutputFile3 = "ADDomainNETBIOS.csv",
 	[alias("o4")]
-    [string] $OutputFile4 = "ADDomainControllers.csv",
+	[string] $OutputFile4 = "ADDomainControllers.csv",
 	[alias("o5")]
-    [string] $OutputFile5 = "ADUsers.csv",
+	[string] $OutputFile5 = "ADUsers.csv",
 	[alias("o6")]
-    [string] $OutputFile6 = "ADDevices.csv",
+	[string] $OutputFile6 = "ADDevices.csv",
 	[alias("o7")]
-    [string] $OutputFile7 = "ADExchangeServers.csv",
+	[string] $OutputFile7 = "ADExchangeServers.csv",
 	[alias("o8")]
-    [string] $OutputFile8 = "ADActiveSyncDevices.csv",
+	[string] $OutputFile8 = "ADActiveSyncDevices.csv",
 	[alias("r")]
-    [string]$SearchRoot = "",
+	[string]$SearchRoot = "",
 	[switch]
 	$Verbose)
 
@@ -68,10 +68,10 @@ function LogEnvironmentDetails {
 
 function LogProgress($progressDescription){
 	Write-Output ""
-    $output = Get-Date -Format HH:mm:ss.ff
+	$output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
 	$output += $progressDescription
-    write-output $output
+	write-output $output
 }
 
 function LogLastException() {
