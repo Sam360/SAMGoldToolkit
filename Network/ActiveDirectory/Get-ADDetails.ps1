@@ -13,14 +13,14 @@ Retrieves domain, user, device, server & mobile device data from Active Director
 .DESCRIPTION
 The Get-ADDetails script queries the local domain for domain, user, device, server 
 & mobile device data and produces 8 CSV files
-	1)    ADDomains.csv - One record per domain
+    1)    ADDomains.csv - One record per domain
     2)    ADDomainTrusts.csv - One record per external trusted domain
-	3)    ADDomainNETBIOS.csv - One record per domain (Includes domain NetBIOS name)
-	4)    ADDomainControllers.csv - One record per domain controller for current domain
-	5)    ADUsers.csv - One record per domain user
-	6)    ADDevices.csv - One record per domain computer
-	7)    ADExchangeServers.csv - One record per Exchange Server
-	8)    ADActiveSyncDevices.csv - One record per Exchange Active Sync Device
+    3)    ADDomainNETBIOS.csv - One record per domain (Includes domain NetBIOS name)
+    4)    ADDomainControllers.csv - One record per domain controller for current domain
+    5)    ADUsers.csv - One record per domain user
+    6)    ADDevices.csv - One record per domain computer
+    7)    ADExchangeServers.csv - One record per Exchange Server
+    8)    ADActiveSyncDevices.csv - One record per Exchange Active Sync Device
 
     Files are written to current working directory
 
