@@ -278,7 +278,7 @@ function Get-ExchangeDetails {
 				$mailBoxData = $mailBox | select -Property UserPrincipalName, SamAccountName, DisplayName, 
 					WindowsLiveID, ExchangeGuid, PrimarySmtpAddress, ExternalDirectoryObjectId, EmailAddresses, 
 					DistinguishedName, Guid, RecipientType, IsMailboxEnabled, WhenMailboxCreated, WhenCreatedUTC, 
-					WhenChangedUTC, LastLogonTime, LastLogoffTime
+					WhenChangedUTC, LastLogonTime, LastLogoffTime, ProtocolSettings
 
 				if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")
 				{
