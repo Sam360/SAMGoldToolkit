@@ -140,10 +140,10 @@ function Get-SCCMInventoryData {
 		
 		if ($RequiredData -eq "SoftwareData" -or $RequiredData -eq "AllData") {
 			if ($SCCMVersion -eq "2007") {
-				Invoke-SQL -SQLCommand $sqlCommandSoftware2007 -ResultsFilePath $OutputFile1 
+				Invoke-SQL -SQLCommand $sqlCommandSoftware2007 -ResultsFilePath $OutputFile2 
 			}
 			else {
-				Invoke-SQL -SQLCommand $sqlCommandSoftware2012 -ResultsFilePath $OutputFile1
+				Invoke-SQL -SQLCommand $sqlCommandSoftware2012 -ResultsFilePath $OutputFile2
 			}
 		}
 	}
