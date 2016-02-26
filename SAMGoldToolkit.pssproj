@@ -31,6 +31,7 @@
   <ItemGroup>
     <Folder Include="Inventory\MAP\" />
     <Folder Include="Network\General\" />
+    <Folder Include="Cloud\" />
     <Folder Include="Servers\Exchange\" />
     <Folder Include="Hypervisor\" />
     <Folder Include="Hypervisor\Hyper-V\" />
@@ -41,6 +42,7 @@
     <Folder Include="Servers\" />
     <Folder Include="Network\" />
     <Folder Include="Network\ActiveDirectory\" />
+    <Folder Include="Servers\Lync\" />
     <Folder Include="Servers\XenApp\" />
     <Folder Include="Servers\SQLServer\" />
   </ItemGroup>
@@ -48,6 +50,8 @@
     <Content Include="Network\ActiveDirectory\Get-ADDetails.ps1" />
   </ItemGroup>
   <ItemGroup>
+    <Compile Include="Cloud\Get-AzureVMList.ps1" />
+    <Compile Include="Cloud\Get-Office365LicenseDetails.ps1" />
     <Compile Include="Inventory\MAP\Get-MAPInventoryData.ps1" />
     <Compile Include="Network\General\Get-NetworkNeighborhoodList.ps1" />
     <Compile Include="Network\General\Ping-Address.ps1" />
@@ -57,6 +61,7 @@
     <Compile Include="Inventory\SCCM\Get-SCCMInventoryData.ps1" />
     <Compile Include="Hypervisor\VMware\Get-VMwareVMList.ps1" />
     <Compile Include="Hypervisor\XenServer\Get-XenServerVMData.ps1" />
+    <Compile Include="Servers\Lync\Get-LyncUsers.ps1" />
     <Compile Include="Servers\SQLServer\Get-SQLServerInfo.ps1" />
     <Compile Include="Servers\XenApp\Get-XenAppDetails.ps1" />
   </ItemGroup>
