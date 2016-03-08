@@ -32,25 +32,110 @@ param(
 	$UserName,
 	$Password,
 	[alias("server")]
-	$LyncServerName = ($env:USERDNSDOMAIN + "\" + $env:COMPUTERNAME),
-    [ValidateSet("RemoteSession","SnapIn")] 
-	$ConnectionMethod = "RemoteSession",
+	$LyncServer,
+    [ValidateSet("Both", "RemoteSession","SnapIn")] 
+	$ConnectionMethod = "Both",
 	[alias("o1")]
 	[string] $OutputFile1 = "LyncUsers.csv",
 	[alias("log")]
-	[string] $LogFile = "LyncLogFile" + $LyncServerName + ".txt"
+	[string] $LogFile = "LyncLogFile" + $LyncServer + ".txt"
 )
 
-function LogEnvironmentDetails {
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:            $($env:COMPUTERNAME)"
-	Write-Output "User Name:                $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:          $($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:          $($host.Version.Major)"
-	Write-Output "PowerShell Version:       $($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:     $($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:              $($PSVersionTable.CLRVersion)"	
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+	)
+
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
 }
+
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
+	}
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
+	
+	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+	
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $Status
+	LogText $output -Color Green
+}
+
+function LogError([string[]]$errorDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
+}
+
+function LogLastException() {
+    $currentException = $Error[0].Exception;
+
+    while ($currentException)
+    {
+        LogText -Color Red $currentException
+        LogText -Color Red $currentException.Data
+        LogText -Color Red $currentException.HelpLink
+        LogText -Color Red $currentException.HResult
+        LogText -Color Red $currentException.Message
+        LogText -Color Red $currentException.Source
+        LogText -Color Red $currentException.StackTrace
+        LogText -Color Red $currentException.TargetSite
+
+        $currentException = $currentException.InnerException
+    }
+
+	Start-Sleep -s 3
+}
+                                                                          
+function LogEnvironmentDetails {
+	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+	LogText -Color Gray " "
+	LogText -Color Gray " Get-LyncUsers.ps1"
+	LogText -Color Gray " "
+
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
+	LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+	LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
+	LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
+	LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+	LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+	LogText -Color Gray "Username Parameter:   $UserName"
+	LogText -Color Gray "Server Parameter:     $LyncServer"
+	LogText -Color Gray "Connection Method:    $ConnectionMethod"
+	LogText -Color Gray "Output File 1:        $OutputFile1"
+	LogText -Color Gray "Log File:             $LogFile"
+	LogText -Color Gray ""
+}
+
 
 function LogLastException() {
 	$currentException = $Error[0].Exception;
@@ -70,23 +155,21 @@ function LogLastException() {
 	}
 }
 
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-	
-	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-	
-	if ($Verbose)
-	{
-		write-output ""
-		$output = Get-Date -Format HH:mm:ss.ff
-		$output += " - "
-		$output += $Status
-		write-output $output
-	}
+function EnvironmentConfigured {
+	if (Get-Command "Get-CsSite" -errorAction SilentlyContinue){
+		return $true
+    }
+	else {
+		return $false
+    }
 }
 
 # Standard CAL([bool]$bStdCAL), Enterprise CAL(bEntCAL), Plus CAL(bPlusCAL)
-function CalculateCAL($bStdCAL, $bEntCAL, $bPlusCAL) {
-    if ($bPlusCAL) {
+function CalculateCAL($bUserStatus, $bStdCAL, $bEntCAL, $bPlusCAL) {
+    if (! $bUserStatus) {
+        return "NO CAL"
+    }
+    elseif ($bPlusCAL) {
         return "Plus CAL"
     }
     elseif ($bEntCAL) {
@@ -101,84 +184,111 @@ function CalculateCAL($bStdCAL, $bEntCAL, $bPlusCAL) {
 }
 
 function Get-LyncUsers {
-	
 	LogEnvironmentDetails
 
-    $boolAuthenticate = $false
-
 	Try {
-        if ($ConnectionMethod -eq "SnapIn") {
-            Import-Module Lync -ErrorAction SilentlyContinue -ErrorVariable $importModule
-            if($importModule -eq $null) {
-		        LogProgress -activity "Lync Server - Module" -Status "Loaded Lync module" -percentComplete 10 
-                $boolAuthenticate = $true
+        $boolAuthenticate = $false
+
+        if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "SnapIn") {
+            $getModule = Get-Module -ListAvailable -Name Lync
+
+            if($getModule) {
+                # Import the specified Module if it exist
+                Import-Module Lync -ErrorAction SilentlyContinue -ErrorVariable $errImport
+                if (EnvironmentConfigured) {
+		            LogProgress -activity "Lync Server - Module" -Status "Loaded Lync module" -percentComplete 10 
+                    $boolAuthenticate = $true
+                    $ConnectionMethod = "SnapIn"
+                }
             }
         }
-        else {
-            # URI for the LYNC Server
-            $uri = ("https://" + $LyncServerName.ToLower() + "/OcsPowershell")
-			
-		    if ($UserName -and $Password) {
-			    $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
-			    $cred = New-Object -TypeName System.Management.Automation.PSCredential ($UserName, $securePassword)
-		    }
-		    else {
-			    $cred = Get-Credential “Domain\Lync_Administrator”
-		    }
+        
+        # If ConnectionMethod = Both
+        # Check if importing module was successful from SnapIn method. 
+        # If not then try the RemoteSession.
+        if (!$boolAuthenticate -and ( $ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "RemoteSession" ) ) {
 
-			LogProgress -activity "Lync Server - Authentication" -Status "Connect to the remote device" -percentComplete 5		
-            $session = New-PSSession -ConnectionURI $uri -Credential $cred
-                        
+			if (!($LyncServer))
+			{
+				$strPrompt = "Lync Server FQDN (Default [$($env:computerName).$($env:USERDNSDOMAIN)])"
+				$LyncServer = Read-Host -Prompt $strPrompt
+				if (!($LyncServer))
+				{
+					$LyncServer = "$($env:computerName).$($env:USERDNSDOMAIN)"
+				}
+			}
+
+        	# Create the Credentials object if username has been provided
+			LogProgress -activity "Lync Data Export" -Status "Lync Server Administrator Credentials Required" -percentComplete 2
+			if(!($UserName -and $Password)){
+				$lyncCreds = Get-Credential
+			}
+			else 
+			{
+				$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+				$lyncCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
+			}
+
+			# URI for the LYNC Server
+            $uri = "https://" + $LyncServer + "/OcsPowershell"
+			LogProgress -activity "Lync Data Export" -Status "Connecting To Server $uri" -percentComplete 5		
+            $session = New-PSSession -ConnectionURI $uri -Credential $lyncCreds -ErrorAction SilentlyContinue
+
             if(-not($session)) {
-		        LogProgress -activity "Lync Server - Authentication" -Status "Authentication - Failed" -percentComplete 100
-                Write-Output "Process Failed"
+                LogError "Process Failed - This server does not have Lync installation. Please try again with appropriate Lync Server."
 			    Exit
             }
             else {
-		        LogProgress -activity "Lync Server - Session" -Status "Loading authenticated session" -percentComplete 10    
-                # Import session
-                Import-PsSession $session -AllowClobber
+		        LogProgress -activity "Lync Data Export" -Status "Importing Lync Session" -percentComplete 10    
+                
+                # Import authenticated session
+                $importSession = Import-PsSession $session -AllowClobber
                 
                 $boolAuthenticate = $true
+                $ConnectionMethod = "RemoteSession"
             }
 	    }
 		
-        if($boolAuthenticate) {        
-            
-		    LogProgress -activity "Lync Server - Get Users" -Status "Begin process" -percentComplete 12 
-
-            $bStdCAL = $false
-            $bEntCAL = $false
-            $bPlusCAL = $false
-            $bVoicePolicy = $false
-    
-		    LogProgress -activity "Lync Server - Get Users" -Status "Load all Lync users" -percentComplete 20
+        if($boolAuthenticate) {
+		    LogProgress -activity "Lync Data Export" -Status "Loading Lync users" -percentComplete 12
             $users = Get-CsUser
     
 			$userCount = $users.count
 			$subInterval = [int](70 / $userCount) / 6
 			$percent = 20
-		
+		    
+            # Load all the policies
+            $ConferencePolicies = Get-CsConferencingPolicy
+            $VoicePolicies = Get-CsVoicePolicy          
+          
             foreach ($user in $users) {
+				LogText "Collecting user data for $($user.UserPrincipalName)"
+
+                $bUserStatus = $false
+                $bStdCAL = $false
+                $bEntCAL = $false
+                $bPlusCAL = $false
+                $bVoicePolicy = $false
+    
 				$percent += [int]$subInterval
-				LogProgress -activity "Lync Server - User Data Collection" -Status "Checking for Standard CAL requirements" -percentComplete $percent
 				
                 # Check for Standard CAL requirement
-                if ($user.Enabled) {            
+                if ($user.Enabled) {
+                    $bUserStatus = $true
                     $bStdCAL = $true
                 }
 				
 				# Check for Enterprise CAL requirement
                 if ($user.ConferencingPolicy -ne $null) {                    
 					$percent += [int]$subInterval
-					LogProgress -activity "Lync Server - User Data Collection" -Status "Checking for Enterprise CAL requirements" -percentComplete $percent
-				
+				    
 					# Get details of the Conferencing Policy
                     if($ConnectionMethod -eq "SnapIn") {
-                        $userConfPolicy = Get-CsConferencingPolicy $user.ConferencingPolicy
+                        $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy.FriendlyName)}
                     }
                     else {
-                        $userConfPolicy = Get-CsConferencingPolicy $user.ConferencingPolicy.FriendlyName
+                        $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy)}
+                        #$userConfPolicy = Get-CsConferencingPolicy $user.ConferencingPolicy
                     }
 
                     if ( ($userConfPolicy.AllowIPAudio -eq $true) -or `
@@ -204,24 +314,23 @@ function Get-LyncUsers {
                 }
 				
                 $percent += [int]$subInterval
-				LogProgress -activity "Lync Server - User Data Collection" -Status "Checking for Plus CAL requirements" -percentComplete $percent
 											
                 # Check for Plus CAL requirement
                 if ($user.EnterpriseVoiceEnabled -eq $true) {
-                    # If true then the user requires Plus CAL, Check with the Voice Policy for appropriate flags
+                    # If true then the user requires Plus CAL
                     $bPlusCAL = $true
                 }
-        
-                if ($user.VoicePolicy -ne $null) {            
+                
+                # Check if any Voice Policy exist for the user in Plus CAL
+                if ($user.VoicePolicy -ne $null) {
 					$percent += [int]$subInterval
-					LogProgress -activity "Lync Server - User Data Collection" -Status "Checking for VoicePolicy" -percentComplete $percent
 								
                     # Get details of the Voice Policy
                     if($ConnectionMethod -eq "SnapIn") {
-                        $userVoicePolicy = Get-CsVoicePolicy $user.VoicePolicy
+                        $userVoicePolicy = $VoicePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.VoicePolicy.FriendlyName)}
                     }
                     else {
-                        $userVoicePolicy = Get-CsVoicePolicy $user.VoicePolicy.FriendlyName
+                        $userVoicePolicy = $VoicePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.VoicePolicy)}
                     }
             
                     $user | Add-Member -MemberType NoteProperty -Name AllowSimulRing -Value $userVoicePolicy.AllowSimulRing
@@ -249,15 +358,14 @@ function Get-LyncUsers {
                 }
 				
                 $percent += [int]$subInterval
-				LogProgress -activity "Lync Server - User Data Collection" -Status "Estimating CAL requirement" -percentComplete $percent
-								
-                $CAL = CalculateCAL($bStdCAL, $bEntCAL, $bPlusCAL)
+				
+                $CAL = CalculateCAL $bUserStatus $bStdCAL $bEntCAL $bPlusCAL
 
                 # Add CAL to CSV    
                 $user | Add-Member -MemberType NoteProperty -Name CALRequired -Value $CAL
             }   # End users for loop
     
-			LogProgress -activity "Lync Server - Get Users" -Status "Export the result" -percentComplete 95
+			LogProgress -activity "Lync Data Export" -Status "Exporting Lync User Data" -percentComplete 95
             $users | Select-Object SamAccountName, UserPrincipalName, FirstName, LastName, `
                 WindowsEmailAddress, Sid, LineServerURI, OriginatorSid, AudioVideoDisabled, `
                 IPPBXSoftPhoneRoutingEnabled, RemoteCallControlTelephonyEnabled, PrivateLine, `
@@ -273,18 +381,15 @@ function Get-LyncUsers {
                 EnableCallPark, EnableMaliciousCallTracing, EnableBWPolicyOverride, PreventPSTNTollBypass, CALRequired `
                 | Export-Csv -NoTypeInformation -Path $OutputFile1 -Encoding UTF8
 
-
             # Clear session
             if ($session) { 
                 Remove-PsSession $session
             }
 
-		    LogProgress -activity "Lync Server - User Data Collection" -Status "Export - Completed" -percentComplete 100
-            Write-Output "Process Completed"
+		    LogProgress -activity "Lync Data Export" -Status "Lync User Data Exported" -percentComplete 100
         }
         else {
-		    LogProgress -activity "Lync Server - Authentication" -Status "Authentication - Failed" -percentComplete 100
-            Write-Output "Process Failed"
+		    LogError "Lync Server Authentication Failed" 
         }
 	}
     catch {
@@ -293,8 +398,6 @@ function Get-LyncUsers {
             Remove-PsSession $session
         }
 		LogLastException
-		LogProgress -activity "Script - Exception" -Status "An Error occured" -percentComplete 100 
-        Write-Output "Process Failed"
     }
 }
 

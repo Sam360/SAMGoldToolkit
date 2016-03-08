@@ -45,48 +45,99 @@ Param(
     $OutputFile3 = "HyperVExport" + $HyperVServer + "Hosts.csv",
     [alias("o4")]
     $OutputFile4 = "HyperVExport" + $HyperVServer + "GuestMigration.csv",
+	[alias("log")]
+	[string] $LogFile = "HyperVLogFile.txt",
 	[ValidateSet("AllData","BasicData","DetailedData")] 
 	$RequiredData = "DetailedData",
 	[switch]
 	$Verbose)
 
-function LogLastException()
-{
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+	)
+
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
+}
+
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
+	}
+}
+
+function LogProgress($progressDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $progressDescription
+	LogText $output -Color Green
+}
+
+function LogError([string[]]$errorDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
+}
+
+function LogLastException() {
     $currentException = $Error[0].Exception;
 
     while ($currentException)
     {
-        write-output $currentException
-        write-output $currentException.Data
-        write-output $currentException.HelpLink
-        write-output $currentException.HResult
-        write-output $currentException.Message
-        write-output $currentException.Source
-        write-output $currentException.StackTrace
-        write-output $currentException.TargetSite
+        LogText -Color Red $currentException
+        LogText -Color Red $currentException.Data
+        LogText -Color Red $currentException.HelpLink
+        LogText -Color Red $currentException.HResult
+        LogText -Color Red $currentException.Message
+        LogText -Color Red $currentException.Source
+        LogText -Color Red $currentException.StackTrace
+        LogText -Color Red $currentException.TargetSite
 
         $currentException = $currentException.InnerException
     }
+
+	Start-Sleep -s 3
 }
 
 function LogEnvironmentDetails {
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:            $($env:COMPUTERNAME)"
-	Write-Output "User Name:                $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:          $($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:          $($host.Version.Major)"
-	Write-Output "PowerShell Version:       $($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:     $($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:              $($PSVersionTable.CLRVersion)"
-	Write-Output "Server:                   $HyperVServer"
-	Write-Output "Required Data:            $RequiredData"
-}
+	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+	LogText -Color Gray " "
+	LogText -Color Gray " Get-HyperVVMList.ps1"
+	LogText -Color Gray " "
 
-function LogProgress($progressDescription){
-    $output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $progressDescription
-    write-output $output
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	LogText -Color Gray "Computer Name:                   $($env:COMPUTERNAME)"
+	LogText -Color Gray "User Name:                       $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	LogText -Color Gray "Windows Version:                 $($OSDetails.Caption)($($OSDetails.Version))"
+	LogText -Color Gray "PowerShell Host:                 $($host.Version.Major)"
+	LogText -Color Gray "PowerShell Version:              $($PSVersionTable.PSVersion)"
+	LogText -Color Gray "PowerShell Word size:            $($([IntPtr]::size) * 8) bit"
+	LogText -Color Gray "CLR Version:                     $($PSVersionTable.CLRVersion)"
+	LogText -Color Gray "Server:                          $HyperVServer"
+	LogText -Color Gray "Required Data:                   $RequiredData"
+	LogText ""
 }
 
 function Get-HyperVVMList1 {
@@ -98,7 +149,7 @@ function Get-HyperVVMList1 {
 		$hyperVNamespace = "root\virtualization\v2"
 		$hyperVClass = gwmi -Class 'Msvm_ComputerSystem' -List -Namespace $hyperVNamespace -computername $HyperVServer -ErrorAction SilentlyContinue
 		if ($hyperVClass -eq $null) {
-			LogProgress "Unable to locate required WMI namespace"
+			LogError "Unable to locate required WMI namespace"
 			return
 		}
 	}
@@ -198,7 +249,7 @@ function Get-HyperVVMList1 {
 
 function Get-HyperVVMList2 {
 	if ((Get-Module -ListAvailable -Name "Hyper-V") -eq $null) {
-		LogProgress "Hyper PowerShell module not available"
+		LogError "Hyper PowerShell module not available"
 		return
 	}
 
@@ -210,7 +261,7 @@ function Get-HyperVVMList2 {
 
 function Get-HyperVVMMigrationInfo {
 	
-LogProgress "Retrieving HyperV VM Events"
+	LogProgress "Retrieving HyperV VM Events"
 	
 	$AllVMEvents = Get-WinEvent -LogName "Microsoft-Windows-Hyper-V-VMMS-Admin" -ComputerName $HyperVServer
 	if($Verbose){
@@ -227,6 +278,7 @@ LogProgress "Retrieving HyperV VM Events"
 
 function Get-HyperVVMList {
 	try {
+		InitialiseLogFile
 		LogEnvironmentDetails
 
 		LogProgress "Getting basic HyperV Guest Info (WMI)"

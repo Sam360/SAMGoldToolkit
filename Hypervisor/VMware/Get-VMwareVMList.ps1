@@ -1,4 +1,4 @@
- ##########################################################################
+##########################################################################
  # 
  # Get-VMwareVMList
  # SAM Gold Toolkit
@@ -8,22 +8,21 @@
 
  <#
 .SYNOPSIS
-Retrieves physical host and virtual machine data from a VMware vSphere or vCenter server 
+Retrieves physical host and virtual machine data from a VMware vSphere or vCenter server
 
 .DESCRIPTION
 The Get-VMwareVMList script queries a single vSphere or vCenter server and produces a CSV file
 including virtual machine and physical host details. The file (VMwareData.csv) contains one 
 record per virtual machine. Data collected includes
-VM Name, CPU, Memory, Network details &
-Physical host Name, CPU, Memory, Network, vMotion details
+	VM Name
+	VM CPU, Memory & Network details
+	Physical Host Name
+	Physical Host CPU, Memory, Network, Cluster & vMotion details
 
 If a vCenter server is queried, details for all VMs in the farm are retrieved.
 
-The file is written to current working directory
-
 .PARAMETER Server 
 Host name of vSphere or vCenter server to scan
-
 .PARAMETER Username
 VMware Username (Required)
 e.g. root (for vSphere server i.e. local account)
@@ -36,8 +35,6 @@ VMware Password (Required)
 Get all guest & host info from from the farm managed by the vSphere server 'Reliant'. 
 Get-VMwareVMList –VMserver Reliant
 
-.NOTES
-
 #>
 
 Param(
@@ -45,68 +42,166 @@ Param(
 	[alias("o1")]
     $OutputFile1 = "VMwareData.csv",
 	[alias("username")]
-	$VMwareUsername = $(Throw "Missing Parameter: Username must be specified"),
+	$VMwareUsername,
 	[alias("password")]
-	$VMwarePassword = $(Throw "Missing Parameter: Password must be specified"),
+	$VMwarePassword,
 	[alias("server")]
-	$VMserver = $(Throw "Missing Parameter: Server must be specified"))
+	$VMserver,
+	[alias("log")]
+	[string] $LogFile = "VMLogFile.txt",
+	[switch]
+	$Verbose)
 
-function LogLastException()
-{
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+	)
+
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
+}
+
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
+	}
+}
+
+function LogProgress($progressDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $progressDescription
+	LogText $output -Color Green
+}
+
+function LogError([string[]]$errorDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
+}
+
+function LogLastException() {
     $currentException = $Error[0].Exception;
 
     while ($currentException)
     {
-        write-output $currentException
-        write-output $currentException.Data
-        write-output $currentException.HelpLink
-        write-output $currentException.HResult
-        write-output $currentException.Message
-        write-output $currentException.Source
-        write-output $currentException.StackTrace
-        write-output $currentException.TargetSite
+        LogText -Color Red $currentException
+        LogText -Color Red $currentException.Data
+        LogText -Color Red $currentException.HelpLink
+        LogText -Color Red $currentException.HResult
+        LogText -Color Red $currentException.Message
+        LogText -Color Red $currentException.Source
+        LogText -Color Red $currentException.StackTrace
+        LogText -Color Red $currentException.TargetSite
 
         $currentException = $currentException.InnerException
     }
-}
 
+	Start-Sleep -s 3
+}
+                                                                          
 function LogEnvironmentDetails {
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:        $($env:COMPUTERNAME)" #-ForegroundColor Magenta
-	Write-Output "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:      $($host.Version.Major)"
-	Write-Output "PowerShell Version:   $($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:          $($PSVersionTable.CLRVersion)"
-	Write-Output "Username Parameter:   $UserName"
-	Write-Output "Server Parameter:     $Server"
-}
+	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+	LogText -Color Gray " "
+	LogText -Color Gray " Get-VMwareVMList.ps1"
+	LogText -Color Gray " "
 
-function LogProgress($progressDescription){
-    $output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $progressDescription
-    write-output $output
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
+	LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+	LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
+	LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
+	LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+	LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+	LogText -Color Gray "Username Parameter:   $VMwareUsername"
+	LogText -Color Gray "Server Parameter:     $VMserver"
+	LogText -Color Gray "Output File 1:        $OutputFile1"
+	LogText -Color Gray "Log File:             $LogFile"
+	LogText -Color Gray ""
 }
 
 function Get-VMwareVMList
 {
-    LogProgress "importing modules"
-	Add-PSSnapin VMware.DeployAutomation
-	Add-PSSnapin VMware.ImageBuilder
-	Add-PSSnapin VMware.VimAutomation.Core
-	Add-PSSnapin VMware.VimAutomation.License
-	Add-PSSnapin VMware.VimAutomation.Vds
+	try
+	{
+		InitialiseLogFile
+		LogEnvironmentDetails
 
-    Write-Output "Script Parameters"
-    Write-Output "UserName:   $VMwareUsername"
-    Write-Output "OutputFile: $OutputFile2"
-	Write-Output "Server:     $VMServer"
+		LogProgress "Importing modules"
+		$allSnapIns = get-pssnapin -registered | sort -Descending
+		foreach ($snapIn in $allSnapIns){
+			if (($snapIn.name -eq 'VMware.DeployAutomation') -or
+				($snapIn.name -eq 'VMware.ImageBuilder') -or
+				($snapIn.name -eq 'VMware.VimAutomation.Core') -or
+				($snapIn.name -eq 'VMware.VimAutomation.License') -or
+				($snapIn.name -eq 'VMware.VimAutomation.Vds')){
+				LogText "Adding SnapIn: $($snapIn.Name)"
+				add-PSSnapin -Name $snapIn.name
+			}
+		}
 
-    # Connect to the VMware server
+		if (!(EnvironmentConfigured))
+		{
+			LogError("VMware PowerShell modules could not be loaded", 
+				"Please ensure that VMware PowerCLI module is installed on this computer",
+			    "https://www.vmware.com/support/developer/PowerCLI/")
+			
+			return
+		}
+
+		if (!($VMserver))
+		{
+			$strPrompt = "VMware host or vCenter Name (Default [$($env:computerName)])"
+			$VMserver = Read-Host -Prompt $strPrompt
+			if (!($VMserver))
+			{
+				$VMserver = $env:computerName
+			}
+		}
+
+		if(!($VMwareUsername -and $VMwarePassword)){
+			LogText "VMware Credentials Required"
+			$creds = Get-Credential
+			if (!($creds)) {
+				LogError("Missing Parameter: Username and Password must be specified")
+				return
+			}
+			$VMwareUsername = $creds.GetNetworkCredential().Username
+			$VMwarePassword = $creds.GetNetworkCredential().Password
+		}
+	}
+	catch 
+	{
+		LogLastException
+        return
+	}
+    
     try
     {
+		# Connect to the VMware server
         LogProgress "Connecting to VMware server"
         $viServer = Connect-VIServer -Server $VMServer -User $VMwareUsername -Password $VMwarePassword
 		
@@ -211,6 +306,8 @@ function Get-VMwareVMList
             }
           }
         $VmInfo | Export-Csv -NoTypeInformation -Path $OutputFile1
+
+		LogProgress "All VM data exported"
     }
     catch
     {
@@ -218,6 +315,11 @@ function Get-VMwareVMList
     }
 }
 
+function EnvironmentConfigured {
+	if (Get-Command "Connect-VIServer" -errorAction SilentlyContinue){
+		return $true}
+	else {
+		return $false}
+}
+
 Get-VMwareVMList
-
-

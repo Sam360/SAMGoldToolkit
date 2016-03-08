@@ -59,7 +59,7 @@ try
 
  Param(
 	[alias("server")]
-	$ExchangeServer = $env:computerName,
+	$ExchangeServer,
 	[alias("o1")]
 	$OutputFile1 = "ExchangeServerDetails" + $ExchangeServer + ".csv",
 	[alias("o2")]
@@ -70,6 +70,8 @@ try
 	$OutputFile4 = "ExchangeCALs" + $ExchangeServer + ".csv",
 	[alias("o5")]
 	$OutputFile5 = "ExchangeCALDetails" + $ExchangeServer + ".csv",
+	[alias("log")]
+	[string] $LogFile = "ExchangeQueryLog.txt",
 	$UserName,
 	$Password,
 	[switch]
@@ -84,21 +86,52 @@ try
 	$RequiredData = "AllData",
 	[ValidateSet("Both","RemoteSession","SnapIn")] 
 	$ConnectionMethod = "Both")
+
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+	)
+
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
+}
+
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
+	}
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
 	
-function LogEnvironmentDetails {
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:             $($env:COMPUTERNAME)"
-	Write-Output "User Name:                 $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:           $($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:           $($host.Version.Major)"
-	Write-Output "PowerShell Version:        $($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:      $($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:               $($PSVersionTable.CLRVersion)"
-	Write-Output "Username Parameter:        $UserName"
-	Write-Output "Server Parameter:          $Server"
-	Write-Output "Required Data:             $RequiredData"
-	Write-Output "Connection Method:         $ConnectionMethod"
-	Write-Output "CAL Script Version:        $CALScriptVersion"
+	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+	
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $Status
+	LogText $output -Color Green
+}
+
+function LogError([string[]]$errorDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
 }
 
 function LogLastException() {
@@ -106,31 +139,53 @@ function LogLastException() {
 
     while ($currentException)
     {
-        write-output $currentException
-        write-output $currentException.Data
-        write-output $currentException.HelpLink
-        write-output $currentException.HResult
-        write-output $currentException.Message
-        write-output $currentException.Source
-        write-output $currentException.StackTrace
-        write-output $currentException.TargetSite
+        LogText -Color Red $currentException
+        LogText -Color Red $currentException.Data
+        LogText -Color Red $currentException.HelpLink
+        LogText -Color Red $currentException.HResult
+        LogText -Color Red $currentException.Message
+        LogText -Color Red $currentException.Source
+        LogText -Color Red $currentException.StackTrace
+        LogText -Color Red $currentException.TargetSite
 
         $currentException = $currentException.InnerException
     }
-}
 
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-	
-	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-	
-	if ($Verbose)
-	{
-		write-output ""
-		$output = Get-Date -Format HH:mm:ss.ff
-		$output += " - "
-		$output += $Status
-		write-output $output
-	}
+	Start-Sleep -s 3
+}
+                                                                          
+function LogEnvironmentDetails {
+	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+	LogText -Color Gray " "
+	LogText -Color Gray " Get-ExchangeDetails.ps1"
+	LogText -Color Gray " "
+
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
+	LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+	LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
+	LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
+	LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+	LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+	LogText -Color Gray "Username Parameter:   $UserName"
+	LogText -Color Gray "Server Parameter:     $ExchangeServer"
+	LogText -Color Gray "Required Data:        $RequiredData"
+	LogText -Color Gray "Connection Method:    $ConnectionMethod"
+	LogText -Color Gray "CAL Script Version:   $CALScriptVersion"
+	LogText -Color Gray "Output File 1:        $OutputFile1"
+	LogText -Color Gray "Output File 2:        $OutputFile2"
+	LogText -Color Gray "Output File 3:        $OutputFile3"
+	LogText -Color Gray "Output File 4:        $OutputFile4"
+	LogText -Color Gray "Output File 5:        $OutputFile5"
+	LogText -Color Gray "Log File:             $LogFile"
+	LogText -Color Gray ""
 }
 
 function EnvironmentConfigured {
@@ -142,21 +197,28 @@ function EnvironmentConfigured {
 
 function Get-ExchangeDetails {
 
+	InitialiseLogFile
 	LogProgress -Activity "Exchange Data Export" -Status "Logging environment details" -percentComplete 1
 	LogEnvironmentDetails
 
-	# Create the Credentials object if username has been provided
-	if ($UserName)
+	if (!($ExchangeServer))
 	{
-		LogProgress -activity "Exchange Data Export" -Status "Creating Credentials Object" -percentComplete 2
+		$strPrompt = "Exchange Server Name (Default [$($env:computerName)])"
+		$ExchangeServer = Read-Host -Prompt $strPrompt
+		if (!($ExchangeServer))
+		{
+			$ExchangeServer = $env:computerName
+		}
+	}
 
-		if ($Password) {
-			$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
-		}
-		else {
-			$securePassword = Read-Host 'Password' -AsSecureString
-		}
-		
+	# Create the Credentials object if username has been provided
+	LogProgress -activity "Exchange Data Export" -Status "Exchange Server Administrator Credentials Required" -percentComplete 2
+	if(!($UserName -and $Password)){
+		$exchangeCreds = Get-Credential
+	}
+	else 
+	{
+		$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
 		$exchangeCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
 	}
 
@@ -179,9 +241,9 @@ function Get-ExchangeDetails {
 	
 	if ($Verbose)
 	{
-		Write-Output "ConnectionUri: $connectionUri"
-		Write-Output "AuthenticationType: $authenticationType"
-		Write-Output "UserName: $($exchangeCreds.UserName)"
+		LogText "ConnectionUri: $connectionUri"
+		LogText "AuthenticationType: $authenticationType"
+		LogText "UserName: $($exchangeCreds.UserName)"
 	}
 	
 	if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "RemoteSession")
@@ -212,8 +274,8 @@ function Get-ExchangeDetails {
 			$allSnapIns = get-pssnapin -registered
 			if ($Verbose)
 			{
-				Write-Output "SnapIns"
-				$allSnapIns | % { Write-Output "Name: $($_.Name) Version: $($_.PSVersion)"}
+				LogText "SnapIns"
+				$allSnapIns | % { LogText "Name: $($_.Name) Version: $($_.PSVersion)"}
 			}
 			
 			$allSnapIns = $allSnapIns | sort -Descending
@@ -222,7 +284,7 @@ function Get-ExchangeDetails {
 				if (($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.Admin') -or
 					($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.E2010') -or
 					($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.E2013')){
-					write-output "Adding SnapIn: $($snapIn.Name)"
+					LogText "Adding SnapIn: $($snapIn.Name)"
 					add-PSSnapin -Name $snapIn.name
 					
 					if (EnvironmentConfigured) {
@@ -234,7 +296,7 @@ function Get-ExchangeDetails {
 	
 	if (!(EnvironmentConfigured))
 	{
-		write-output "Unable to configure Powershell Exchange environment"
+		LogError "Unable to configure Powershell Exchange environment"
 		exit
 	}   
 
@@ -246,11 +308,11 @@ function Get-ExchangeDetails {
 			$exchangeServers = Get-ExchangeServer -Identity $ExchangeServer
 			$exchangeServers | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
 			if ($Verbose) {
-				Write-Output "Server Count: $($exchangeServers.Count)"
+				LogText "Server Count: $($exchangeServers.Count)"
 			}
 		}
 		else {
-			Write-Output "Exchange cmdlet Get-ExchangeServer not found. Does current user have sufficient permissions?" 
+			LogText "Exchange cmdlet Get-ExchangeServer not found. Does current user have sufficient permissions?" 
 		}
 	}
 
@@ -262,8 +324,8 @@ function Get-ExchangeDetails {
 		if ($mailBoxes) 
 		{
 			if ($Verbose) {
-				Write-Output "Mailbox Count: $($mailBoxes.Count)"
-				Write-Output  ([string]::Format("{0,-5} {1,-55} {2,-20}","Count","UserPrincipalName","LastLogonTime"))
+				LogText "Mailbox Count: $($mailBoxes.Count)"
+				LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}","Count","UserPrincipalName","LastLogonTime"))
 			}
 
 			$listMailBoxData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
@@ -285,7 +347,7 @@ function Get-ExchangeDetails {
 				}
 
 				if ($Verbose) {
-					Write-Output  ([string]::Format("{0,-5} {1,-55} {2,-20}", $countMailBoxes, $mailBoxData.UserPrincipalName, $mailBoxData.LastLogonTime))
+					LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}", $countMailBoxes, $mailBoxData.UserPrincipalName, $mailBoxData.LastLogonTime))
 				}
 
 				$listMailBoxData.Add($mailBoxData)
@@ -301,8 +363,8 @@ function Get-ExchangeDetails {
 		if ($activeSyncDevices)
 		{
 			if ($Verbose) {
-				Write-Output "Device Count: $($activeSyncDevices.Count)"
-				Write-Output  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}","Count","User","DeviceOS","LastSuccessSync"))
+				LogText "Device Count: $($activeSyncDevices.Count)"
+				LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}","Count","User","DeviceOS","LastSuccessSync"))
 			}
 
 			$listActiveSyncDeviceData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
@@ -339,7 +401,7 @@ function Get-ExchangeDetails {
 
 				if ($Verbose) {
 					$activeDeviceUser = GetUserNameFromDeviceID -DeviceID $activeSyncDeviceData.Identity
-					Write-Output  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $countDevices, $activeDeviceUser,
+					LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $countDevices, $activeDeviceUser,
 						$activeSyncDeviceData.DeviceOS, $activeSyncDeviceData.LastSuccessSync))
 				}
 
@@ -380,7 +442,7 @@ function Get-ExchangeDetails {
 		}
 		
 		if ($Verbose) {
-			Write-Output "Running CAL script: Version $($CALScriptVersion)"
+			LogText "Running CAL script: Version $($CALScriptVersion)"
 		}
 		
 		if ($CALScriptVersion -eq "2007") {
@@ -429,13 +491,13 @@ function GetUserNameFromDeviceID {
 
 # Function that outputs Exchange CALs in the organization 
 function Output-Report { 
-    Write-Output "=========================" 
-    Write-Output "Exchange CAL Usage Report" 
-    Write-Output "=========================" 
-    Write-Output "" 
-    Write-Output "Total Users:                                    $TotalMailboxes" 
-    Write-Output "Total Standard CALs:                            $TotalStandardCALs" 
-    Write-Output "Total Enterprise CALs:                          $TotalEnterpriseCALs" 
+    LogText "=========================" 
+    LogText "Exchange CAL Usage Report" 
+    LogText "=========================" 
+    LogText "" 
+    LogText "Total Users:                                    $TotalMailboxes" 
+    LogText "Total Standard CALs:                            $TotalStandardCALs" 
+    LogText "Total Enterprise CALs:                          $TotalEnterpriseCALs" 
 	
 	$calReport = New-Object -TypeName System.Object
 	$calReport | Add-Member -MemberType NoteProperty -Name TotalMailboxes -Value $TotalMailboxes
@@ -457,8 +519,8 @@ $scriptGetCALReqs2007 =
 {
 # Trap block 
 trap {  
-    Write-Output "An error has occurred running the script:"  
-    Write-Output $_ 
+    LogText "An error has occurred running the script:"  
+    LogText $_ 
  
     $Global:AdminSessionADSettings.DefaultScope = $OriginalDefaultScope 
  	
@@ -514,9 +576,9 @@ function Exit-Script
 $args | foreach { if (IsHelpRequest $_) { Usage; Exit-Script; } } 
  
 # Introduction message 
-Write-Output "Report Exchange 2007 client access licenses (CALs) in use in the organization"  
-Write-Output "It will take some time if there are a large amount of users......" 
-Write-Output "" 
+LogText "Report Exchange 2007 client access licenses (CALs) in use in the organization"  
+LogText "It will take some time if there are a large amount of users......" 
+LogText "" 
  
 # Report all recipients in the org. 
 $OriginalDefaultScope = $Global:AdminSessionADSettings.DefaultScope 
@@ -542,7 +604,7 @@ $DGStack = new-object System.Collections.Stack
 # Bool variable for outputing progress information running this script. 
 $EnableProgressOutput = $True 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Progress:" 
+    LogText "Progress:" 
 } 
  
 ################ 
@@ -558,15 +620,15 @@ function Output-Counts
         return 
     } 
  
-    Write-Output "Hash Table Name                                 Count" 
-    Write-Output "---------------                                 -----" 
-    Write-Output "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
-    Write-Output "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
-    Write-Output "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
-    Write-Output "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
-    Write-Output "VisitedGroups:                                 " $VisitedGroups.Count 
-    Write-Output "" 
-    Write-Output "" 
+    LogText "Hash Table Name                                 Count" 
+    LogText "---------------                                 -----" 
+    LogText "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
+    LogText "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
+    LogText "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
+    LogText "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
+    LogText "VisitedGroups:                                 " $VisitedGroups.Count 
+    LogText "" 
+    LogText "" 
 } 
  
 function Merge-Hashtables 
@@ -629,7 +691,7 @@ $TotalStandardCALs = $TotalMailboxes
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Standard CALs calculated:                 $TotalStandardCALs" 
+    LogText "Total Standard CALs calculated:                 $TotalStandardCALs" 
 } 
  
 ############################# 
@@ -652,10 +714,10 @@ Get-TransportServer | foreach {
  
         ## Progress output ...... 
         if ($EnableProgressOutput -eq $True) { 
-            Write-Output "Advanced Anti-spam Enabled:                     True" 
-            Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+            LogText "Advanced Anti-spam Enabled:                     True" 
+            LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-            Write-Output "" 
+            LogText "" 
         } 
  
         # All mailboxes are counted as Enterprise CALs, report and exit. 
@@ -669,7 +731,7 @@ Get-TransportServer | foreach {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Advanced Anti-spam Enabled:                     False" 
+    LogText "Advanced Anti-spam Enabled:                     False" 
 } 
  
  
@@ -740,9 +802,9 @@ $AllMailboxIDs.Keys | foreach {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Unified Messaging Users calculated:             $UMUserCount" 
-    Write-Output "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
-    Write-Output "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
+    LogText "Unified Messaging Users calculated:             $UMUserCount" 
+    LogText "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
+    LogText "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
 } 
  
 # 
@@ -884,7 +946,7 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Journaling Users calculated:                    $JournalingUserCount" 
+    LogText "Journaling Users calculated:                    $JournalingUserCount" 
 } 
  
 # 
@@ -899,9 +961,9 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+    LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-    Write-Output "" 
+    LogText "" 
 } 
  
  
@@ -920,8 +982,8 @@ $scriptGetCALReqs2010 =
 {
 # Trap block 
 trap {  
-    Write-Output "An error has occurred running the script:"  
-    Write-Output $_ 
+    LogText "An error has occurred running the script:"  
+    LogText $_ 
  
     Set-ADServerSettings -ViewEntireForest $OriginalADServerSetting.ViewEntireForest -RecipientViewRoot $OriginalADServerSetting.RecipientViewRoot 
  
@@ -978,9 +1040,9 @@ $OriginalADServerSetting = Get-ADServerSettings
 $args | foreach { if (IsHelpRequest $_) { Usage; Exit-Script; } } 
  
 # Introduction message 
-Write-Output "Report Exchange 2010 client access licenses (CALs) in use in the organization"  
-Write-Output "It will take some time if there are a large amount of users......" 
-Write-Output "" 
+LogText "Report Exchange 2010 client access licenses (CALs) in use in the organization"  
+LogText "It will take some time if there are a large amount of users......" 
+LogText "" 
  
 Set-ADServerSettings -ViewEntireForest $true 
  
@@ -1010,7 +1072,7 @@ $UserMailboxFilter = "(RecipientTypeDetails -eq 'UserMailbox') -or (RecipientTyp
 # Bool variable for outputing progress information running this script. 
 $EnableProgressOutput = $True 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Progress:" 
+    LogText "Progress:" 
 } 
  
 ################ 
@@ -1026,15 +1088,15 @@ function Output-Counts
         return 
     } 
  
-    Write-Output "Hash Table Name                                 Count" 
-    Write-Output "---------------                                 -----" 
-    Write-Output "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
-    Write-Output "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
-    Write-Output "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
-    Write-Output "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
-    Write-Output "VisitedGroups:                                 " $VisitedGroups.Count 
-    Write-Output "" 
-    Write-Output "" 
+    LogText "Hash Table Name                                 Count" 
+    LogText "---------------                                 -----" 
+    LogText "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
+    LogText "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
+    LogText "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
+    LogText "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
+    LogText "VisitedGroups:                                 " $VisitedGroups.Count 
+    LogText "" 
+    LogText "" 
 } 
  
 function Merge-Hashtables 
@@ -1091,7 +1153,7 @@ $TotalStandardCALs = $TotalMailboxes
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Standard CALs calculated:                 $TotalStandardCALs" 
+    LogText "Total Standard CALs calculated:                 $TotalStandardCALs" 
 } 
  
 ############################# 
@@ -1114,10 +1176,10 @@ foreach ($TransportServer in (Get-TransportServer)) {
              
             ## Progress output ...... 
             if ($EnableProgressOutput -eq $True) { 
-                Write-Output "Advanced Anti-spam Enabled:                     True" 
-                Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+                LogText "Advanced Anti-spam Enabled:                     True" 
+                LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-                Write-Output "" 
+                LogText "" 
             } 
  
             # All mailboxes are counted as Enterprise CALs, report and exit. 
@@ -1132,7 +1194,7 @@ foreach ($TransportServer in (Get-TransportServer)) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Advanced Anti-spam Enabled:                     False" 
+    LogText "Advanced Anti-spam Enabled:                     False" 
 } 
  
 # If Info Leakage Protection is enabled on any transport rule, all mailboxes in the org are counted as Enterprise CALs 
@@ -1142,10 +1204,10 @@ Get-TransportRule | foreach {
          
         ## Progress output ...... 
         if ($EnableProgressOutput -eq $True) { 
-            Write-Output "Info Leakage Protection Enabled:                True" 
-            Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+            LogText "Info Leakage Protection Enabled:                True" 
+            LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-            Write-Output "" 
+            LogText "" 
         } 
 		
 		$InfoLeakageProtectionEnabled = $true
@@ -1163,7 +1225,7 @@ $InfoLeakageProtectionEnabled = $false
 
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Info Leakage Protection Enabled:                False" 
+    LogText "Info Leakage Protection Enabled:                False" 
 } 
  
 ############################## 
@@ -1245,11 +1307,11 @@ $AllMailboxIDs.Keys | foreach {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Unified Messaging Users calculated:             $UMUserCount" 
-    Write-Output "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
-    Write-Output "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
-    Write-Output "Archived Mailbox Users calculated:              $ArchiveUserCount" 
-    Write-Output "Retention Policy Users calculated:              $RetentionPolicyUserCount" 
+    LogText "Unified Messaging Users calculated:             $UMUserCount" 
+    LogText "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
+    LogText "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
+    LogText "Archived Mailbox Users calculated:              $ArchiveUserCount" 
+    LogText "Retention Policy Users calculated:              $RetentionPolicyUserCount" 
 } 
  
  
@@ -1339,7 +1401,7 @@ for ($i=0; $i -lt $DiscoveryConsoleRoleAssignments.Count; $i++) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Searchable Users calculated:                   "$SearchableMaiboxIDs.Count 
+    LogText "Searchable Users calculated:                   "$SearchableMaiboxIDs.Count 
 } 
  
 # 
@@ -1480,7 +1542,7 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Journaling Users calculated:                    $JournalingUserCount" 
+    LogText "Journaling Users calculated:                    $JournalingUserCount" 
 } 
  
  
@@ -1495,9 +1557,9 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+    LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-    Write-Output "" 
+    LogText "" 
 } 
  
 ################### 
@@ -1516,8 +1578,8 @@ $scriptGetCALReqs2010SP1 =
 {
 # Trap block 
 trap {  
-    Write-Output "An error has occurred running the script:"  
-    Write-Output $_ 
+    LogText "An error has occurred running the script:"  
+    LogText $_ 
  
     Set-ADServerSettings -ViewEntireForest $OriginalADServerSetting.ViewEntireForest -RecipientViewRoot $OriginalADServerSetting.RecipientViewRoot 
  
@@ -1558,9 +1620,9 @@ $OriginalADServerSetting = Get-ADServerSettings
 $args | foreach { if (IsHelpRequest $_) { Usage; Exit-Script; } } 
  
 # Introduction message 
-Write-Output "Report Exchange 2010 client access licenses (CALs) in use in the organization"  
-Write-Output "It will take some time if there are a large amount of users......" 
-Write-Output "" 
+LogText "Report Exchange 2010 client access licenses (CALs) in use in the organization"  
+LogText "It will take some time if there are a large amount of users......" 
+LogText "" 
  
 Set-ADServerSettings -ViewEntireForest $true 
  
@@ -1589,7 +1651,7 @@ $UserMailboxFilter = "(RecipientTypeDetails -eq 'UserMailbox') -or (RecipientTyp
 # Bool variable for outputing progress information running this script. 
 $EnableProgressOutput = $True 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Progress:" 
+    LogText "Progress:" 
 } 
  
 ################ 
@@ -1605,15 +1667,15 @@ function Output-Counts
         return 
     } 
  
-    Write-Output "Hash Table Name                                 Count" 
-    Write-Output "---------------                                 -----" 
-    Write-Output "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
-    Write-Output "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
-    Write-Output "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
-    Write-Output "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
-    Write-Output "VisitedGroups:                                 " $VisitedGroups.Count 
-    Write-Output "" 
-    Write-Output "" 
+    LogText "Hash Table Name                                 Count" 
+    LogText "---------------                                 -----" 
+    LogText "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
+    LogText "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
+    LogText "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
+    LogText "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
+    LogText "VisitedGroups:                                 " $VisitedGroups.Count 
+    LogText "" 
+    LogText "" 
 } 
  
 function Merge-Hashtables 
@@ -1672,7 +1734,7 @@ $TotalStandardCALs = $TotalMailboxes
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Standard CALs calculated:                 $TotalStandardCALs" 
+    LogText "Total Standard CALs calculated:                 $TotalStandardCALs" 
 } 
  
 ############################# 
@@ -1686,10 +1748,10 @@ Get-TransportRule | foreach {
          
         ## Progress output ...... 
         if ($EnableProgressOutput -eq $True) { 
-            Write-Output "Info Leakage Protection Enabled:                True" 
-            Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+            LogText "Info Leakage Protection Enabled:                True" 
+            LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-            Write-Output "" 
+            LogText "" 
         } 
 		
 		$InfoLeakageProtectionEnabled = $true
@@ -1707,7 +1769,7 @@ $InfoLeakageProtectionEnabled = $false
 
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Info Leakage Protection Enabled:                False" 
+    LogText "Info Leakage Protection Enabled:                False" 
 } 
  
 ############################## 
@@ -1841,11 +1903,11 @@ Get-CASMailbox -ResultSize 'Unlimited' -Filter 'ActiveSyncEnabled -eq $true' | f
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Unified Messaging Users calculated:             $UMUserCount" 
-    Write-Output "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
-    Write-Output "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
-    Write-Output "Archived Mailbox Users calculated:              $ArchiveUserCount" 
-    Write-Output "Retention Policy Users calculated:              $RetentionPolicyUserCount" 
+    LogText "Unified Messaging Users calculated:             $UMUserCount" 
+    LogText "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
+    LogText "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
+    LogText "Archived Mailbox Users calculated:              $ArchiveUserCount" 
+    LogText "Retention Policy Users calculated:              $RetentionPolicyUserCount" 
 } 
  
  
@@ -1934,12 +1996,12 @@ if (Get-Command "Get-ManagementRole" -errorAction SilentlyContinue){
 	} 
 }
 else {
-	 Write-Output "Warning: Get-ManagementRole cmdlet not available. E-discovery management roles not analysed"
+	 LogText "Warning: Get-ManagementRole cmdlet not available. E-discovery management roles not analysed"
 }
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Searchable Users calculated:                   "$SearchableMaiboxIDs.Count 
+    LogText "Searchable Users calculated:                   "$SearchableMaiboxIDs.Count 
 } 
  
 # 
@@ -2086,7 +2148,7 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Journaling Users calculated:                    $JournalingUserCount" 
+    LogText "Journaling Users calculated:                    $JournalingUserCount" 
 } 
  
  
@@ -2105,9 +2167,9 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+    LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-    Write-Output "" 
+    LogText "" 
 }
 
 ################### 
@@ -2127,8 +2189,8 @@ $scriptGetCALReqs2010SP3 =
 {
 # Trap block 
 trap {  
-    Write-Output "An error has occurred running the script:"  
-    Write-Output $_ 
+    LogText "An error has occurred running the script:"  
+    LogText $_ 
  
     Set-ADServerSettings -ViewEntireForest $OriginalADServerSetting.ViewEntireForest -RecipientViewRoot $OriginalADServerSetting.RecipientViewRoot 
  
@@ -2185,9 +2247,9 @@ $OriginalADServerSetting = Get-ADServerSettings
 $args | foreach { if (IsHelpRequest $_) { Usage; Exit-Script; } } 
  
 # Introduction message 
-Write-Output "Report Exchange 2010 SP3 client access licenses (CALs) in use in the organization"  
-Write-Output "It will take some time if there are a large amount of users......" 
-Write-Output "" 
+LogText "Report Exchange 2010 SP3 client access licenses (CALs) in use in the organization"  
+LogText "It will take some time if there are a large amount of users......" 
+LogText "" 
  
 Set-ADServerSettings -ViewEntireForest $true 
  
@@ -2218,7 +2280,7 @@ $UserMailboxFilter = "(RecipientTypeDetails -eq 'UserMailbox') -or (RecipientTyp
 # Bool variable for outputing progress information running this script. 
 $EnableProgressOutput = $True 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Progress:" 
+    LogText "Progress:" 
 } 
  
 ################ 
@@ -2234,15 +2296,15 @@ function Output-Counts
         return 
     } 
  
-    Write-Output "Hash Table Name                                 Count" 
-    Write-Output "---------------                                 -----" 
-    Write-Output "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
-    Write-Output "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
-    Write-Output "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
-    Write-Output "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
-    Write-Output "VisitedGroups:                                 " $VisitedGroups.Count 
-    Write-Output "" 
-    Write-Output "" 
+    LogText "Hash Table Name                                 Count" 
+    LogText "---------------                                 -----" 
+    LogText "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
+    LogText "EnterpriseCALMailboxIDs:                       " $EnterpriseCALMailboxIDs.Count 
+    LogText "JournalingMailboxIDs:                          " $JournalingMailboxIDs.Count 
+    LogText "JournalingDGMailboxMemberIDs:                  " $JournalingDGMailboxMemberIDs.Count 
+    LogText "VisitedGroups:                                 " $VisitedGroups.Count 
+    LogText "" 
+    LogText "" 
 } 
  
 function Merge-Hashtables 
@@ -2301,7 +2363,7 @@ $TotalStandardCALs = $TotalMailboxes
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Standard CALs calculated:                 $TotalStandardCALs" 
+    LogText "Total Standard CALs calculated:                 $TotalStandardCALs" 
 } 
  
 ############################# 
@@ -2315,10 +2377,10 @@ Get-TransportRule | foreach {
          
         ## Progress output ...... 
         if ($EnableProgressOutput -eq $True) { 
-            Write-Output "Info Leakage Protection Enabled:                True" 
-            Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+            LogText "Info Leakage Protection Enabled:                True" 
+            LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-            Write-Output "" 
+            LogText "" 
         }
 		
 		$InfoLeakageProtectionEnabled = $true
@@ -2336,7 +2398,7 @@ $InfoLeakageProtectionEnabled = $false
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Info Leakage Protection Enabled:                False" 
+    LogText "Info Leakage Protection Enabled:                False" 
 } 
  
 ############################## 
@@ -2471,12 +2533,12 @@ Get-CASMailbox -ResultSize 'Unlimited' -Filter 'ActiveSyncEnabled -eq $true' | f
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Unified Messaging Users calculated:             $UMUserCount" 
+    LogText "Unified Messaging Users calculated:             $UMUserCount" 
 # Oliver Moazzezi - Removed Managed Custom Folder calculations
-   #Write-Output "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
-    Write-Output "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
-    Write-Output "Archived Mailbox Users calculated:              $ArchiveUserCount" 
-    Write-Output "Retention Policy Users calculated:              $RetentionPolicyUserCount" 
+   #LogText "Managed Custom Folder Users calculated:         $ManagedCustomFolderUserCount" 
+    LogText "Advanced ActiveSync Policy Users calculated:    $AdvancedActiveSyncUserCount" 
+    LogText "Archived Mailbox Users calculated:              $ArchiveUserCount" 
+    LogText "Retention Policy Users calculated:              $RetentionPolicyUserCount" 
 } 
  
  
@@ -2529,7 +2591,7 @@ foreach ($ManagementScope in $ManagementScopes.Values) {
 
 ## Progress output ...... 
 #if ($EnableProgressOutput -eq $True) { 
-  #  Write-Output "Searchable Users calculated:                    Coming Soon" 
+  #  LogText "Searchable Users calculated:                    Coming Soon" 
 #} 
  
 # 
@@ -2676,14 +2738,14 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Journaling Users calculated:                    $JournalingUserCount" 
+    LogText "Journaling Users calculated:                    $JournalingUserCount" 
     
 } 
  
 #Oliver Moazzezi - DLP section (coming soon..)
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Data Loss Prevention Users Calculated:          Manual Check. Enterprise CAL required for feature"
+    LogText "Data Loss Prevention Users Calculated:          Manual Check. Enterprise CAL required for feature"
 } 
  
 # 
@@ -2701,9 +2763,9 @@ if ( !$OrgWideJournalingEnabled ) {
  
 ## Progress output ...... 
 if ($EnableProgressOutput -eq $True) { 
-    Write-Output "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
+    LogText "Total Enterprise CALs calculated:               $TotalEnterpriseCALs" 
  
-    Write-Output "" 
+    LogText "" 
 } 
  
 ################### 

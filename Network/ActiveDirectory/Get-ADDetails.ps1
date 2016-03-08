@@ -50,28 +50,43 @@ Get-ADDetails –Verbose
 	[string] $OutputFile7 = "ADExchangeServers.csv",
 	[alias("o8")]
 	[string] $OutputFile8 = "ADActiveSyncDevices.csv",
+	[alias("log")]
+	[string] $LogFile = "ADLogFile.txt",
 	[alias("r")]
 	[string]$SearchRoot = "",
 	[switch]
 	$Verbose)
 
-function LogEnvironmentDetails {
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:                   $($env:COMPUTERNAME)" #-ForegroundColor Magenta
-	Write-Output "User Name:                       $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:                 $($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:                 $($host.Version.Major)"
-	Write-Output "PowerShell Version:              $($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:            $($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:                     $($PSVersionTable.CLRVersion)"
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+	)
+
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
+}
+
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
+	}
 }
 
 function LogProgress($progressDescription){
-	Write-Output ""
+	if ($Verbose){
+		LogText ""
+	}
+
 	$output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
 	$output += $progressDescription
-	write-output $output
+	LogText $output -Color Green
 }
 
 function LogLastException() {
@@ -79,17 +94,48 @@ function LogLastException() {
 
     while ($currentException)
     {
-        write-output $currentException
-        write-output $currentException.Data
-        write-output $currentException.HelpLink
-        write-output $currentException.HResult
-        write-output $currentException.Message
-        write-output $currentException.Source
-        write-output $currentException.StackTrace
-        write-output $currentException.TargetSite
+        LogText -Color Red $currentException
+        LogText -Color Red $currentException.Data
+        LogText -Color Red $currentException.HelpLink
+        LogText -Color Red $currentException.HResult
+        LogText -Color Red $currentException.Message
+        LogText -Color Red $currentException.Source
+        LogText -Color Red $currentException.StackTrace
+        LogText -Color Red $currentException.TargetSite
 
         $currentException = $currentException.InnerException
     }
+}
+
+function LogEnvironmentDetails {
+	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+	LogText -Color Gray " "
+	LogText -Color Gray " Get-ADDetails.ps1"
+	LogText -Color Gray " "
+
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	LogText -Color Gray "Computer Name:                   $($env:COMPUTERNAME)"
+	LogText -Color Gray "User Name:                       $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	LogText -Color Gray "Windows Version:                 $($OSDetails.Caption)($($OSDetails.Version))"
+	LogText -Color Gray "PowerShell Host:                 $($host.Version.Major)"
+	LogText -Color Gray "PowerShell Version:              $($PSVersionTable.PSVersion)"
+	LogText -Color Gray "PowerShell Word size:            $($([IntPtr]::size) * 8) bit"
+	LogText -Color Gray "CLR Version:                     $($PSVersionTable.CLRVersion)"
+	LogText -Color Gray "Output File 1:                   $OutputFile1"
+	LogText -Color Gray "Output File 2:                   $OutputFile2"
+	LogText -Color Gray "Output File 3:                   $OutputFile3"
+	LogText -Color Gray "Output File 4:                   $OutputFile4"
+	LogText -Color Gray "Output File 5:                   $OutputFile5"
+	LogText -Color Gray "Output File 6:                   $OutputFile6"
+	LogText -Color Gray "Output File 7:                   $OutputFile7"
+	LogText -Color Gray "Output File 8:                   $OutputFile8"
+	LogText -Color Gray "Log File:                        $LogFile"
+	LogText ""
 }
 	
 function SearchAD ($searchFilter, [string[]]$searchAttributes, [switch]$useNamingContext){
@@ -186,14 +232,14 @@ function GetDomainInfo {
 	$forest = $domain.Forest
 	
 	if ($Verbose){
-		Write-Output "Current Forest:                  $forest"
-		Write-Output "Forest Root Domain:              $($forest.RootDomain)"
+		LogText "Current Forest:                  $forest"
+		LogText "Forest Root Domain:              $($forest.RootDomain)"
 		$forestDomainNames = ($forest.Domains | select -expand Name) -join ", "
-		Write-Output "Forest Domains:                  $(CountItems($forest.Domains)) ($forestDomainNames)"
+		LogText "Forest Domains:                  $(CountItems($forest.Domains)) ($forestDomainNames)"
 
-		Write-Output "Current Domain:                  $domain"
+		LogText "Current Domain:                  $domain"
 		$domainControllerNames = ($domain.DomainControllers | select -expand Name) -join ", "
-		Write-Output "Domain Controllers:              $(CountItems($domain.DomainControllers)) ($domainControllerNames)"
+		LogText "Domain Controllers:              $(CountItems($domain.DomainControllers)) ($domainControllerNames)"
 	}
 	
 	if ($forest.Domains) {
@@ -214,7 +260,7 @@ function GetDomainInfo {
 
 	if ($Verbose){
 		$trustDomainNames = ($domainTrusts | select -expand Name) -join ", "
-		Write-Output "Trusted Domains:                 $(CountItems($domainTrusts)) ($trustDomainNames)"
+		LogText "Trusted Domains:                 $(CountItems($domainTrusts)) ($trustDomainNames)"
 	}
 }
 
@@ -224,16 +270,16 @@ function GetUserInfo {
 	$userList  | export-csv $OutputFile5 -notypeinformation -Encoding UTF8
 
 	if ($Verbose){
-		Write-Output "User Count:                      $($userList.Count)"
+		LogText "User Count:                      $($userList.Count)"
 
 		$cutOfftime = (Get-Date).AddDays(-30).ToString('yyyy-MM-dd hh:mm:ss')
 		$activeUsers = $userList | where {(GetMoreRecentDate -date1 $_.lastLogon -date2 $_.lastLogonTimestamp) -gt $cutOfftime}
-		Write-Output "User Count (Active):             $(CountItems($activeUsers))"
+		LogText "User Count (Active):             $(CountItems($activeUsers))"
 
 		$exchangeMailBoxes = $userList | where {$_.msExchMailboxGuid}
-		Write-Output "Exchange Mailbox Count:          $((($exchangeMailBoxes) | measure-object).count)"
+		LogText "Exchange Mailbox Count:          $((($exchangeMailBoxes) | measure-object).count)"
 		$activeExchangeMailBoxes = $exchangeMailBoxes | where {(GetMoreRecentDate -date1 $_.lastLogon -date2 $_.lastLogonTimestamp) -gt $cutOfftime}
-		Write-Output "Exchange Mailbox Count (Active): $(CountItems($activeExchangeMailBoxes))"
+		LogText "Exchange Mailbox Count (Active): $(CountItems($activeExchangeMailBoxes))"
 	}
 }
 
@@ -243,39 +289,112 @@ function GetDeviceInfo {
 	$deviceList | export-csv $OutputFile6 -notypeinformation -Encoding UTF8
 
 	if ($Verbose){
-		Write-Output "Device Count:                    $($deviceList.Count)"
+		LogText "Device Count:                    $($deviceList.Count)"
 
 		$cutOfftime = (Get-Date).AddDays(-30).ToString('yyyy-MM-dd hh:mm:ss')
 		$activeDevices = $deviceList | where {(GetMoreRecentDate -date1 $_.lastLogon -date2 $_.lastLogonTimestamp) -gt $cutOfftime}
-		Write-Output "Device Count (Active):           $(CountItems($activeDevices))"
+		LogText "Device Count (Active):           $(CountItems($activeDevices))"
 
 		$clusters = $deviceList | where {$_.servicePrincipalName -ne $null -and
 											$_.servicePrincipalName.Contains("MSServerCluster/") }
 		$clusterNames = ($clusters | select -expand Name) -join ", "
-		Write-Output "Clusters:                        $(CountItems($clusters)) ($clusterNames)"
+		LogText "Clusters:                        $(CountItems($clusters)) ($clusterNames)"
 
 		$hyperVHosts = $deviceList | where { $_.servicePrincipalName -ne $null -and (
 							$_.servicePrincipalName.Contains("Microsoft Virtual Console Service/") -or 
 							$_.servicePrincipalName.Contains("Microsoft Virtual System Migration Service/")) }
 		$hyperVHostNames = ($hyperVHosts | select -expand Name) -join ", "
-		Write-Output "HyperV Hosts:                    $(CountItems($hyperVHosts)) ($hyperVHostNames)"
+		LogText "HyperV Hosts:                    $(CountItems($hyperVHosts)) ($hyperVHostNames)"
 
 		$exchangeServers = $deviceList | where { $_.servicePrincipalName -ne $null -and (
 							$_.servicePrincipalName.Contains("exchangeMDB/") -or 
 							$_.servicePrincipalName.Contains("exchangeRFR/")) } 
 		$exchangeServerNames = ($exchangeServers | select -expand Name) -join ", "
-		Write-Output "Exchange Servers:                $(CountItems($exchangeServers)) ($exchangeServerNames)"
+		LogText "Exchange Servers:                $(CountItems($exchangeServers)) ($exchangeServerNames)"
 
-		Write-Output ""
-		Write-Output "Operating System Counts:"
-		$deviceList | Group-Object operatingSystem | Select Name,Count | Sort Count -desc | ft -autosize | out-string
+		LogText ""
+		LogText "Operating System Counts:"
+		$deviceList | Group-Object operatingSystem | Select Name,Count | Sort Count -desc | ft -autosize | out-string | LogText
 	}
 }
+
+function DecodeExchangeEdition([string] $encStr) {
+
+    Set-Variable Seed -value 0x49 -option ReadOnly
+    Set-Variable Magic -value 0x43 -option ReadOnly
+
+Add-Type -TypeDefinition @"
+    public enum ExchangeEditions
+    {
+        None = -1,
+        Standard = 0x0,
+        Enterprise = 0x1,
+        Evaluation = 0x2,
+        Sample = 0x3,
+        BackOffice = 0x4,
+        Select = 0x5,
+        UpgradedStandard = 0x8,
+        UpgradedEnterprise = 0x9,
+        Coexistence = 0xA,
+        UpgradedCoexistence = 0xB
+    }
+"@
+
+
+    if ([string]::IsNullOrEmpty($encStr)) {
+        Write-Host("Edition string is null. Exiting")
+        return -1
+    }
+
+    [byte[]]$decodeBuf = [System.Text.Encoding]::Unicode.GetBytes($encStr)
+
+    for ($i=$decodeBuf.Length; $i -gt 1 ; $i--) {
+        $decodeBuf[$i - 1] = $decodeBuf[$i - 1] -bxor [byte]($decodeBuf[$i - 2] -bxor $Seed)
+    }
+
+    $decodeBuf[0] = $decodeBuf[0] -bxor ($Seed -bor $Magic)
+
+    $strDecodedType = [System.Text.Encoding]::Unicode.GetString($decodeBuf)
+
+    # The first part of the decoded type contains the Exchange server edition
+    $strParts = $strDecodedType -split ";"
+
+    if($strParts.Count -ne 3) {
+        Write-Host "Array length mismatch. Exiting"
+        return -1
+    }
+
+    # Make sure this is a valid edition - we then add the edition string back into the AD query datastore - we're going to save
+    # the datastore with the edition in it
+    [int]$nEdition = [convert]::ToInt32($strParts[0], 16)
+
+
+    if ([enum]::GetValues([ExchangeEditions]) -contains $nEdition) {
+        return ($nEdition -as [ExchangeEditions])
+    }
+    else {
+        return ( "Unknown(" + $nEdition + ")")
+    }
+}
+
 
 function GetExchangeInfo {
 	$exchangeServerAttributes = "name", "objectGUID", "msexchproductid", "msexchcurrentserverroles", "type", "msexchserversite", "usncreated", "ADsPath", "msexchversion", "serialnumber", "msexchserverrole"
 	$exchangeServers = SearchAD -searchAttributes $exchangeServerAttributes -searchFilter "(objectCategory=msExchExchangeServer)" -useNamingContext
+
 	if ($exchangeServers) {
+        # Parse Exchange Edition
+        foreach ($srv in $exchangeServers) {
+            $ExEditionDetails = DecodeExchangeEdition($srv.type)
+            Add-Member -InputObject $srv -MemberType NoteProperty -Name "ExchangeEdition" -Value $ExEditionDetails
+
+            $intValRoles = $srv.msexchcurrentserverroles
+            $ExchangeRoles = @{2 = "Mailbox" ; 4 = "ClientAccess" ; 16 = "UnifiedMessaging" ; 32 = "HubTransport" ; 64 = "EdgeTransport" }
+            $ExchServerRoles = $ExchangeRoles.Keys | where { $_ -band $intValRoles } | foreach { $ExchangeRoles.Get_Item($_) }
+            $InstalledRoles = $ExchServerRoles -join ' | '
+            Add-Member -InputObject $srv -MemberType NoteProperty -Name "ExchangeCurrentRoles" -Value $InstalledRoles
+        }
+
 		$exchangeServers | export-csv $OutputFile7 -notypeinformation -Encoding UTF8
 	}
 	
@@ -286,8 +405,8 @@ function GetExchangeInfo {
 	}
 	
 	if ($Verbose){
-		Write-Output "Active Sync Devices:"
-		$activeSyncDevices | Group-Object msExchDeviceType | Select Name,Count | Sort Count -desc | ft -autosize | out-string
+		LogText "Active Sync Devices:"
+		$activeSyncDevices | Group-Object msExchDeviceType | Select Name,Count | Sort Count -desc | ft -autosize | out-string | LogText
 	}
 }
 
@@ -321,6 +440,7 @@ function CountItems {
 
 function Get-ADDetails {
 	try {
+		InitialiseLogFile
 		LogEnvironmentDetails
 		
 		LogProgress "Getting Domain Info"

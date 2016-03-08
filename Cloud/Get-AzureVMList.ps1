@@ -12,8 +12,6 @@
 .SYNOPSIS
 Retrieves Azure installation data from a added Microsoft account
 
-    Files are written to current working directory
-
 .DESCRIPTION
 Retrieves installation information for multiple accounts and outputs this information to a csv file. This information includes SubscriptionId,
 SubscriptionName, Environment supported modes, DefaultAccount and more.
@@ -78,7 +76,6 @@ Param(
 	[string] $LogFile = "AzureLogFile.txt"
 )
 
-
 function LogEnvironmentDetails {
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
 	Write-Output "Computer Name:            $($env:COMPUTERNAME)"
@@ -123,6 +120,20 @@ function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete
 	}
 }
 
+function Get-NETFramework($version) {
+    $installedVersions = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -recurse |
+                            Get-ItemProperty -name Version -EA 0 |
+                            Where { $_.PSChildName -match '^(?!S)\p{L}'} |
+                            Select Version
+    
+    foreach ( $ver in $installedVersions ) {    
+        if ($ver.Version -ge $version) {
+            return $true
+        }
+    }
+    return $false
+}
+
 function VerifySignature([string]$msiPath) {
 	$sign = Get-AuthenticodeSignature $msiPath
 
@@ -142,13 +153,28 @@ function VerifySignature([string]$msiPath) {
 	}
 }
 
+function Get-InstalledApps {
+
+    # Create 
+    if ([IntPtr]::Size -eq 4) {
+        $regpath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+    }
+    else {
+        $regpath = @(
+            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
+            'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+        )
+    }
+    Get-ItemProperty $regpath | .{process{if($_.DisplayName -and $_.UninstallString) { $_ } }} | Select DisplayName, Publisher, InstallDate, DisplayVersion, UninstallString |Sort DisplayName
+}
+
 function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msiFileName) {
 		
 	# Check if Azure dependency has been installed.
-	$InstallCheck = Get-WmiObject -Class Win32_Product | select Name | where { $_.Name -match $InstallName}
+    $InstallCheck = Get-InstalledApps | where {$_.DisplayName -like $InstallName}
 
 	if ($InstallCheck.Name -eq $null) {
-		$msifile = $PSScriptRoot + '\' + $msiFileName
+		$msifile = $scriptPath + '\' + $msiFileName
 
 		# Download the required msi
 		$webclient = New-Object System.Net.WebClient
@@ -192,56 +218,83 @@ function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msi
     return $true
 }
 
-function InstallUsingWebPI ([string]$InstallName) {
-    [reflection.assembly]::LoadWithPartialName("Microsoft.Web.PlatformInstaller") | Out-Null
- 
+function InstallWebPIProduct([string]$InstallName) {
     $ProductManager = New-Object Microsoft.Web.PlatformInstaller.ProductManager
     $ProductManager.Load()
-    $product = $ProductManager.Products | Where { $_.ProductId -eq "WindowsAzurePowershell" }
- 
+    $product = $ProductManager.Products | Where { $_.ProductId -eq $InstallName }
+    
+    # Dependency check for product
+    $dependenciesRequired = $product.AllDependencies | select ProductId, Version
+    foreach($dependency in $dependenciesRequired) {
+        if ($dependency.ProductId -eq "NETFramework45") {
+            if (! (Get-NETFramework -version $dependency.Version) ) {                
+                $productFramework45 = $ProductManager.Products | Where { $_.ProductId -eq $dependency.ProductId }
+                $installStatus = InstallUsingWebPI -Language $ProductManager.GetLanguage("en") -Product $productFramework45
+            }
+        }
+        
+        if ($dependency.ProductId -eq "WindowsManagementFramework_86_64") {
+            $currentVersion = $PSVersionTable.WSManStackVersion | select Major,Minor
+            $currVersionDouble = [string]$currentVersion.Major + "." + [string]$currentVersion.Minor
+            if ($currVersionDouble -lt $dependency.Version) {
+                $productWMF = $ProductManager.Products | Where { $_.ProductId -eq $dependency.ProductId }
+                $installStatus = InstallUsingWebPI -Language $ProductManager.GetLanguage("en") -Product $productWMF
+            }
+        }
+    }
+    
+    #Install the Product
+    $installStatus = InstallUsingWebPI -Language $ProductManager.GetLanguage("en") -Product $product    
+}
+
+function InstallUsingWebPI ($Language, $Product) {
+    [reflection.assembly]::LoadWithPartialName("Microsoft.Web.PlatformInstaller") | Out-Null
+   
+    #Load Installer
     $InstallManager = New-Object Microsoft.Web.PlatformInstaller.InstallManager
- 
-    $Language = $ProductManager.GetLanguage("en")
-    $installertouse = $product.GetInstaller($Language)
+    
+    $installertouse = $Product.GetInstaller($Language)
  
     $installer = New-Object 'System.Collections.Generic.List[Microsoft.Web.PlatformInstaller.Installer]'
     $installer.Add($installertouse)
     $InstallManager.Load($installer)
  
-    $failureReason=$null
+    $failureReason = $null
     foreach ($installerContext in $InstallManager.InstallerContexts) {
         $InstallManager.DownloadInstallerFile($installerContext, [ref]$failureReason)
     }
+    
+    if ($failureReason -ne $null) {
+        $installstatus = $InstallManager.StartInstallation()
 
-    $installstatus = $InstallManager.StartInstallation()
-
-    $installProgress = $InstallManager.InstallerContexts.InstallationState
-
-    Write-Host ("B4 while: " + $installProgress)
-    while($installProgress -ne "InstallCompleted") {
-        $installProgress = $InstallManager.InstallerContexts.InstallationState
-        Write-Host ("Just Enter: " + $installProgress)
-        #Check if installation is still in progress or it has come across any error
-        if ( ($installProgress -eq "Installing") -or ($installProgress -eq "Downloaded") -or ($installProgress -eq "Downloading") ) {
-            Write-Host ("B4 Sleep: " + $InstallManager.InstallerContexts.InstallationState)
-            # Wait for 10 seconds
-            Start-Sleep -s 5
-            $installProgress = $InstallManager.InstallerContexts.InstallationState
-
-            Write-Host ("After Sleep: " + $InstallManager.InstallerContexts.InstallationState)
+        $installProgress = $InstallManager.InstallerContexts | select InstallationState
+        
+        while($installProgress -ne "InstallCompleted") {
+            $installProgress = $InstallManager.InstallerContexts | select InstallationState
+            
+            #Check if installation is still in progress or it has come across any error
+            if ($installProgress.InstallationState -eq "InstallCompleted") {
+                return $true
+            }
+            elseif (($installProgress.InstallationState -eq "Installing") -or `
+                ($installProgress.InstallationState -eq "Downloaded") -or `
+                ($installProgress.InstallationState -eq "Downloading") ) {
+                
+                # Wait for 10 seconds
+                Start-Sleep -s 10
+                $installProgress = $InstallManager.InstallerContexts | select InstallationState
+            }
+            else {
+                return $false
+            }
         }
-        else {
-            break
-            return $false
-        }
+        
+        return $true
     }
-
-    $installstatus
-    Write-Host ("Exit While: " + $InstallManager.InstallerContexts.InstallationState)
-    return $true
-
+    else {
+        return $false
+    }
 }
-
 function Get-AzureVMList{	
 	LogEnvironmentDetails
 	LogProgress -Activity "Azure VM List Export" -Status "Logging environment details" -percentComplete 2
@@ -250,7 +303,7 @@ function Get-AzureVMList{
     ## Install dependencies if they don't exist.
     $AzureModule = Get-Module -Name Azure
     if($AzureModule) {
-        Import-Module Azure
+        Import-Module Azure
     }
     else {
         if($OSArch -eq "64-bit") {
@@ -259,16 +312,19 @@ function Get-AzureVMList{
         else {
             $msi_url_wpi = "http://download.microsoft.com/download/C/F/F/CFF3A0B8-99D4-41A2-AE1A-496C08BEB904/WebPlatformInstaller_x86_en-US.msi"
         }
-        $exec = DependencyInstaller -InstallName "Microsoft Web Platform Installer*" -msiURL $msi_url_wpi -msiFileName "wpilauncher.exe"
+        $exec = DependencyInstaller -InstallName "Microsoft Web Platform Installer*" -msiURL $msi_url_wpi -msiFileName "wpilauncher.msi"
 
         if ($exec) {
+        
+            # Check for .NET Framework to install Azure powershell cmdlets
+            if (! (Get-NETFramework -version 4) ) {
+                $installStatus = InstallUsingWebPI -InstallName "NETFramework4"
+            }
+            
             $installStatus = InstallUsingWebPI -InstallName "WindowsAzurePowerShell"
             if ($installStatus) {
                 try {
-                    .$profile.AllUsersAllHosts
-                    $sptPath = $PSScriptRoot
-                    powershell -noexit "& ""$sptPath\Get-AzureVMList.ps1"""
-                    Import-Module Azure                    
+                    Import-Module "C:\Program Files (x86)\Microsoft SDKs\Azure\PowerShell\ServiceManagement\Azure\Azure.psd1"                    
                 }
                 catch {
 		            LogLastException
@@ -433,6 +489,8 @@ function Get-AzureVMList{
 	}
 }
 
+
+$global:scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
 
 # Call the Get-AzureVMSubscriptionDetails Function to 
 #	- Load Account Details
