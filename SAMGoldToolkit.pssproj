@@ -43,6 +43,7 @@
     <Folder Include="Network\" />
     <Folder Include="Network\ActiveDirectory\" />
     <Folder Include="Servers\Lync\" />
+    <Folder Include="Servers\SharePoint\" />
     <Folder Include="Servers\XenApp\" />
     <Folder Include="Servers\SQLServer\" />
   </ItemGroup>
@@ -62,6 +63,7 @@
     <Compile Include="Hypervisor\VMware\Get-VMwareVMList.ps1" />
     <Compile Include="Hypervisor\XenServer\Get-XenServerVMData.ps1" />
     <Compile Include="Servers\Lync\Get-LyncUsers.ps1" />
+    <Compile Include="Servers\SharePoint\Get-SharePointLicenseDetails.ps1" />
     <Compile Include="Servers\SQLServer\Get-SQLServerInfo.ps1" />
     <Compile Include="Servers\XenApp\Get-XenAppDetails.ps1" />
   </ItemGroup>
