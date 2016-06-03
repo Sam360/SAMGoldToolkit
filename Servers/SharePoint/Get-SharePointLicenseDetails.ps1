@@ -92,6 +92,7 @@ function LogLastException() {
 }
                                                                           
 function LogEnvironmentDetails {
+	LogText -Color Gray " "
 	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
 	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
 	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
@@ -277,6 +278,28 @@ function GetScriptPath
     return "$ScriptDir\Get-SharePointLicenseDetails.ps1"
 }
 
+function GetScriptFolder
+{
+	$strScriptPath = GetScriptPath
+	return split-path -parent $strScriptPath
+}
+
+function RunADScript
+{
+	$strScriptFolder = GetScriptFolder
+	$strADScriptPath = "$strScriptFolder\Get-ADDetails.ps1"
+	if (-not (Test-Path $strADScriptPath)) {
+		LogError "AD Group & User info missing."
+			"AD script ($strADScriptPath) not found"
+		return
+	}
+
+	LogProgress "Running AD Script"
+	$strADScriptCommand = "$strADScriptPath -o5 $InputADUsersFile -o7 $InputADGroupsFile"
+	
+	invoke-expression -Command $strADScriptCommand
+}
+
 function Set-SPUserCAL($bIsPremium, $member, $htAllUsers) {
     if ($bIsPremium) {
         $htAllUsers.Set_Item($member.Key, "Premium")
@@ -323,10 +346,9 @@ function Get-SharePointLicenseDetails {
 			# We use PSExec and user credentials to avoid this issue.
 			
 			# Ensure PSExec is available
-			$ScriptPath = GetScriptPath
-			$ScriptFolder = split-path -parent $ScriptPath
-			$PSExecPath = "$ScriptFolder\PSExec.exe"
-			if (!(Test-Path $PSExecPath)) {
+			$strScriptFolder = GetScriptFolder
+			$strPSExecPath = "$strScriptFolder\PSExec.exe"
+			if (!(Test-Path $strPSExecPath)) {
 				LogError "PSExec.exe not found in folder $ScriptDir",
 					"PSexec is required to query remote SharePoint server"
                 return
@@ -338,10 +360,15 @@ function Get-SharePointLicenseDetails {
 				if ($Creds) {
 					$UserName = $Creds.UserName
 					$Password = $Creds.Password
+
+					if (-not $UserName -like "*\*"){
+						LogError "Warning: SharePoint script generally requires username in [Domain\Username] format.", 
+							"Script will continue, but may fail due to invalid login."
+					}
 				}
 			}
 			
-			LogProgress "Connecting to remote SharePoint server ($SharePointServer)"
+			LogProgress "Connecting to remote SharePoint server ($SharePointServer) with User Name `"$UserName`""
 			if(!($UserName -and $Password)){
 				LogError "Warning: SharePoint script generally requires username and password to be specified.", 
 					"Script will continue, but may fail due to insufficient privileges."
@@ -356,21 +383,31 @@ function Get-SharePointLicenseDetails {
 
 			
 			if(-not($session)) {
-                LogError "Unable to connect to server $SharePointServer", $strConnectionError
+                LogError "Unable to connect to server $SharePointServer", 
+					"It may be necessary to enable PowerShell Remoting on the remote server with the Enable-PSRemoting command", 
+					$strConnectionError
                 return
             }
 			
 			# Move required files to remote computer
 			LogProgress "Moving required files to $SharePointServer"
 			# Move script file
-			$LocalScriptPath = GetScriptPath
-			$RemoteDefaultFolder = GetRemoteDefaultFolder -RemoteSession $session
-			$RemoteScriptPath = "$RemoteDefaultFolder\Get-SharePointLicenseDetails.ps1"
-			PutFile -LocalFilePath $LocalScriptPath -RemoteFilePath $RemoteScriptPath -RemoteSession $session
+			$strLocalScriptPath = GetScriptPath
+			$strLocalScriptFolder = GetScriptFolder
+			$strLocalADScriptPath = "$strLocalScriptFolder\Get-ADDetails.ps1"
+			$strRemoteDefaultFolder = GetRemoteDefaultFolder -RemoteSession $session
+			$strRemoteScriptPath = "$strRemoteDefaultFolder\Get-SharePointLicenseDetails.ps1"
+			PutFile -LocalFilePath $strLocalScriptPath -RemoteFilePath $strRemoteScriptPath -RemoteSession $session
 			
-			# Move AD files (If they exist)
-			PutFile -LocalFilePath $InputADGroupsFile -RemoteFilePath "ADGroups.csv" -RemoteSession $session
-			PutFile -LocalFilePath $InputADUsersFile -RemoteFilePath "ADUsers.csv" -RemoteSession $session
+			if ((Test-Path $InputADGroupsFile) -and (Test-Path $InputADUsersFile)) {
+				# Move AD files (If they exist)
+				PutFile -LocalFilePath $InputADGroupsFile -RemoteFilePath "ADGroups.csv" -RemoteSession $session
+				PutFile -LocalFilePath $InputADUsersFile -RemoteFilePath "ADUsers.csv" -RemoteSession $session
+			}
+			elseif (Test-Path $strLocalADScriptPath) {
+				# AD files don't exist - Move teh AD script instead
+				PutFile -LocalFilePath $strLocalADScriptPath -RemoteFilePath "Get-ADDetails.ps1" -RemoteSession $session
+			}
 			
 			# Reset remote log file
 			PutFile -LocalFilePath "" -RemoteFilePath "SPLogFile.txt" -RemoteSession $session
@@ -378,10 +415,10 @@ function Get-SharePointLicenseDetails {
 			# Execute the script remotely
 			LogProgress "Executing script remotely using PSExec"
 			if($UserName -and $Password){
-				Start-Process $PSExecPath -ArgumentList "\\$SharePointServer -h -accepteula -w ""$RemoteDefaultFolder"" -u $UserName -p $Password powershell.exe -ExecutionPolicy Bypass -File ""$RemoteScriptPath"" -server $SharePointServer -headless" -Wait -NoNewWindow -WorkingDirectory $RemoteDefaultFolder -ErrorVariable errPS
+				Start-Process $strPSExecPath -ArgumentList "\\$SharePointServer -h -accepteula -w ""$strRemoteDefaultFolder"" -u $UserName -p $Password powershell.exe -ExecutionPolicy Bypass -File ""$strRemoteScriptPath"" -server $SharePointServer -headless" -Wait -NoNewWindow -WorkingDirectory $strRemoteDefaultFolder -ErrorVariable errPS
 			}
 			else {
-				Start-Process $PSExecPath -ArgumentList "\\$SharePointServer -h -accepteula -w ""$RemoteDefaultFolder"" powershell.exe -ExecutionPolicy Bypass -File ""$RemoteScriptPath"" -server $SharePointServer -headless" -Wait -NoNewWindow -WorkingDirectory $RemoteDefaultFolder -ErrorVariable errPS
+				Start-Process $strPSExecPath -ArgumentList "\\$SharePointServer -h -accepteula -w ""$strRemoteDefaultFolder"" powershell.exe -ExecutionPolicy Bypass -File ""$strRemoteScriptPath"" -server $SharePointServer -headless" -Wait -NoNewWindow -WorkingDirectory $strRemoteDefaultFolder -ErrorVariable errPS
 			}
 
 			# Copy the results back to this device
@@ -404,7 +441,7 @@ function Get-SharePointLicenseDetails {
 			DeleteRemoteFile -RemoteSession $session -RemoteFilePath "SPLogFile.txt"
 			DeleteRemoteFile -RemoteSession $session -RemoteFilePath "ADGroups.csv"
 			DeleteRemoteFile -RemoteSession $session -RemoteFilePath "ADUsers.csv"
-			DeleteRemoteFile -RemoteSession $session -RemoteFilePath $RemoteScriptPath
+			DeleteRemoteFile -RemoteSession $session -RemoteFilePath $strRemoteScriptPath
 		}
 	}
 	catch {
@@ -626,317 +663,329 @@ function QuerySharePointInfo {
         
         ## Export Web Applications detail
         $result | Export-Csv -Path $OutputFile1 -NoTypeInformation -Encoding UTF8
-        LogText "SharePoint License details exported"
+        LogText "SharePoint site details exported"
 
         ##
         ## CAL calculation process begins
         ##
 
         ## Check if AD Groups and Users file is specified.
-        if ( ( ($InputADGroupsFile -ne $null) -and (Test-Path -Path $InputADGroupsFile) ) -and `
-             ( ($InputADUsersFile -ne $null) -and (Test-Path -Path $InputADUsersFile) ) ) {        
-            ## Load AD Users and Groups csv file
-            $importedADGroups = Import-Csv -Path $InputADGroupsFile -Encoding UTF8
-            
-            ## Load AD users  csv file
-            $importedADUsers = Import-Csv -Path $InputADUsersFile -Encoding UTF8
-
-            ## Hash table for AD Groups and its users
-            $htADGroups = @{}            
-            
-            ## Groups Hash Table        
-            $htAllGroups = @{}
-            foreach ($importedADGroup in $importedADGroups) {
-                $htAllGroups.Add($importedADGroup.distinguishedname, $importedADGroup)
-            }
-            
-            ## Users Hash Table        
-            $htAllUsers = @{}
-            $requiredCAL = ""
-            foreach ($importedADUser in $importedADUsers) {
-                $htAllUsers.Add($importedADUser.distinguishedname, $requiredCAL)
-            }
-                
-            ## Get details for each AD Group
-            foreach ($ADGroup in $arrSPADGroups) {
-                $arrGroupUserList = @()
-
-                if ($ADGroup -ne "Everyone" -and $ADGroup -ne "NT AUTHORITY\authenticated users") {
-                    ## Process AD groups that are used in SP
-                    $userGrpSplit = $ADGroup -split "\\"
-                    $getADGroupByName = $importedADGroups | where { (($_.distinguishedname -split ",").ToLower() -like ("*" + $userGrpSplit[1])) }
-                    $grpName = $getADGroupByName.Name
-                                
-                    ## Groups - Everyone or NT system are classified as AD groups since they are all authenticated users
-                    ## $grpName will hold only values for actual AD groups
-                    ## If the group name is Everyone or NT system then they will be ignored
-                    if ($grpName) {
-                        ## Get all the users within the group
-                        $grpMembers = $getADGroupByName.Members -split ";"
-
-                        ## Check if any of the user is a AD Group
-                        foreach ($grpMember in $grpMembers) {
-                            $htChildGroupLists = @{}
-                        
-                            ## Check if the user is a group
-                            $grpParent = $importedADGroups | where { $_.distinguishedname -like $grpMember }
-                            if ($grpParent) {
-                                ## The user is a group
-                                $htChildGroupLists.Add($grpParent.name, $grpParent.distinguishedname)
-                            }
-                            else {
-                                ## Add the user
-                                $arrGroupUserList += $grpMember
-                            }
-
-                            while ($htChildGroupLists.count -ne 0) {
-                                ## 
-                                $htChildGroups = @{}
-                                foreach ($arrChildGroupList in $htChildGroupLists.GetEnumerator()) {
-                                
-                                    ## Get the Child group details
-                                    $hashKey = $arrChildGroupList.Key
-                                    $hashValue = $arrChildGroupList.Value
-
-                                    ## Check if the user is a group
-                                    $grpChild = $importedADGroups | where { $_.distinguishedname -like $hashValue }
-                                    $grpChildMembers = $grpChild.Members -split ";"
-
-                                    foreach($grpChildMember in $grpChildMembers) {  
-                                        ## Check if the user is a group
-                                        $grpParent = $importedADGroups | where { $_.distinguishedname -like $grpChildMember }                                  
-                                        if ($grpParent) {
-                                            ## The user is a group
-                                            $htChildGroups.Add($grpParent.name, $grpParent.distinguishedname)
-                                        }
-                                        else {
-                                            ## Add the user
-                                            $arrGroupUserList += $grpChildMember
-                                        }
-                                    }
-                                }
-
-                                ## Remove old groups from the list and replace with the child groups to avoid looping for same group
-                                $htChildGroupLists = $htChildGroups
-                            }
-                        }
-
-                        ## Add the group and it's members to the array
-                        $htADGroups.Add($grpName, $arrGroupUserList)                    
-                    }
-                }
-            } ## End-of-loop
-
-            ## Iterate all SharePoint group(s) to merge AD group(s) user(s) with SP user(s)
-            $htAllGroups = @{}
+		if (-not ($InputADGroupsFile -and $InputADUsersFile)) {
+        	LogError "AD Groups File and/or AD Users file was not specified"
+				"User CAL requirements can not be calculated"
+			return
+		}
+		
+		if (-not ((Test-Path $InputADGroupsFile) -and (Test-Path $InputADUsersFile))) {
+			# AD data is missing - Run the AD script to collect it
+			RunADScript
+        	
+			if (-not ((Test-Path $InputADGroupsFile) -and (Test-Path $InputADUsersFile))) {
+				# AD data is still missing - Skip the CAL stuff
+				RunADScript
+	        	LogError "AD Groups File and/or AD Users file were not found"
+					"User CAL requirements can not be calculated"
+				return
+			}
+		}
+		      
+        ## Load AD Users and Groups csv file
+        $importedADGroups = Import-Csv $InputADGroupsFile
         
-            ## Convert Hashes to ArrayList
-            foreach ($htResultSPUserGroup in $htResultSPUserGroups.GetEnumerator()) {
-                $arrADGroupUsers = @()
+        ## Load AD users  csv file
+        $importedADUsers = Import-Csv $InputADUsersFile
 
-                ## Get details of current group
-                $grpDetails = $htResultSPUserGroup.Value
-
-                ## Check if the group has an AD Group
-                if ($grpDetails.ADGroups) {                
-                    $arrADGroups = $grpDetails.ADGroups -split ";"
-
-                    foreach ($grpAD in ($arrADGroups -split "\\")[1]) {
-                        $arrADGroupUsers += $htADGroups.GetEnumerator() | where {$_.Key -eq $grpAD}
-                    }
-                }
-                
-                ## Find the Distinguished username for the user directly referencing in SP
-                $usersList = $htResultSPUserGroup.Value.UsersList -split ";"
-                        
-                foreach ($user in $usersList) {
-                    if ($user -ne "" -and $user -ne "SHAREPOINT\System") {
-                        $userSplit = ($user.Split("|")[1]) -split "\\"
-                                
-                        ## Process AD users that are used in SP
-                        $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
-                        if ($arrADGroupUsers -notcontains $getADUserByName.distinguishedname) {
-                            $arrADGroupUsers += $getADUserByName.distinguishedname
-                        }
-                    }
-                }
-                
-                $htResultSPUserGroup.Value.UsersList = ($arrADGroupUsers -join ";")
-
-                ## Add the values to All Groups Hash table
-                $htAllGroups.Add($htResultSPUserGroup.Key, $htResultSPUserGroup.Value)
-
-                ## Default Action - Add the users to the list as array            
-                ## Array for Exporting SP Groups
-                $arrResultUserGroups += $htResultSPUserGroup.Value            
-            }
+        ## Hash table for AD Groups and its users
+        $htADGroups = @{}            
+        
+        ## Groups Hash Table        
+        $htAllGroups = @{}
+        foreach ($importedADGroup in $importedADGroups) {
+            $htAllGroups.Add($importedADGroup.distinguishedname, $importedADGroup)
+        }
+        
+        ## Users Hash Table        
+        $htAllUsers = @{}
+        $requiredCAL = ""
+        foreach ($importedADUser in $importedADUsers) {
+            $htAllUsers.Add($importedADUser.distinguishedname, $requiredCAL)
+        }
             
-            ## Export all user groups
-            $arrResultUserGroups | Export-Csv -Path $OutputFile2 -NoTypeInformation -Encoding UTF8
-		    LogText "User Groups Exported"
+        ## Get details for each AD Group
+        foreach ($ADGroup in $arrSPADGroups) {
+            $arrGroupUserList = @()
 
-            ##
-            ## Calculate CAL
-            ##
-
-            ## Iterate through sites 
-            foreach ($site in $sites) {
-            
-                $waURL = $site.WebApp.Url
-                $scURL = $site.SiteDet.Url
-                $siteWebs = $site.SiteDet.AllWebs
+            if ($ADGroup -ne "Everyone" -and $ADGroup -ne "NT AUTHORITY\authenticated users") {
+                ## Process AD groups that are used in SP
+                $userGrpSplit = $ADGroup -split "\\"
+                $getADGroupByName = $importedADGroups | where { (($_.distinguishedname -split ",").ToLower() -like ("*" + $userGrpSplit[1])) }
+                $grpName = $getADGroupByName.Name
                             
-                foreach ($siteWeb in $siteWebs) { 
-            
-                    $bIsPremium = $false
+                ## Groups - Everyone or NT system are classified as AD groups since they are all authenticated users
+                ## $grpName will hold only values for actual AD groups
+                ## If the group name is Everyone or NT system then they will be ignored
+                if ($grpName) {
+                    ## Get all the users within the group
+                    $grpMembers = $getADGroupByName.Members -split ";"
 
-                    $siteURL = $siteWeb.URL
+                    ## Check if any of the user is a AD Group
+                    foreach ($grpMember in $grpMembers) {
+                        $htChildGroupLists = @{}
                     
-                    ## Get list of Site Groups
-                    $siteGroups = $siteWeb.Groups
-                    $siteUsers = $siteWeb.Users
-
-                    $sitePremiumFeatures = Get-SPFeature "PremiumWeb" -Web $siteURL -ErrorAction SilentlyContinue
-                    if ($sitePremiumFeatures) {
-                        ## URL has premium features
-                        $bIsPremium = $true
-                    }
-                    
-                    LogText ("Calculating CAL for site - " + $siteURL)
-
-                    ## Get the groups the user is in from AllSPGroups
-                    ## Update the Users list with CAL information required
-                    foreach ($siteGroup in $siteGroups) {
-                        $objGroupDetails = $htAllGroups.GetEnumerator() | where {$_.Key -eq $siteGroup.Name}
-                        ## Check if the group has any users within it.
-                        
-                        if ($objGroupDetails.Value.UsersList.Length -eq 0 ) {
-                            continue
-                        }
-                        
-                        $grpMembers = $objGroupDetails.Value.UsersList -split ";"
-                        
-                        foreach ($grpMember in $grpMembers) {
-                            $grpMember = $grpMember.Trim()
-                            if ($grpMember -ne "" -and $grpMember -ne "SHAREPOINT\System") {
-                            
-                                if ($grpMember.contains("CN")) {                                
-                                    $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $grpMember}
-                                }
-                                else {
-                                    if ($grpMember.contains("|") ) {
-                                        $userSplit = ($grpMember.Split("|")[1]) -split "\\"
-                                        # Its an AD group
-                                        if($userSplit[0].StartsWith("c:")) {
-                                            Write-Host ("User is a Domain user - " + $userSplit[0])
-                                        }
-                                    }
-                                    elseif ($grpMember.contains("\")) {
-                                        $userSplit = $grpMember -split "\\"
-                                    }
-                                    else {
-                                        continue
-                                    }
-
-                                    ## Process AD users that are used in SP
-                                    $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
-                                    $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $getADUserByName.distinguishedname}
-                                }                                   
-                                if ($member) {
-                                    ## Update the users CAL in UsersHash
-                                    Set-SPUserCAL -bIsPremium $bIsPremium -member $member -htAllUsers $htAllUsers                                    
-                                }
-                            }
-                        }
-                    }
-                    
-                    ## Update the Users list with CAL information required
-                    ## Users - Has ADUsers and ADGroups
-                    foreach ($siteUserDetail in $siteUsers) {
-                        $siteUser = $siteUserDetail.LoginName.Trim()
-
-                        ## CAL for All users within site
-                        ## check if the user is Authenticated users or Everyone
-                        if ($siteUser -eq "NT AUTHORITY\authenticated users" -or $siteUser -eq "c:0(.s|true") {
-                            $htAllUsers_CAL = @{}
-                            $allUsers = $htAllUsers.GetEnumerator()
-
-                            foreach ( $user in $allUsers ) {                                    
-                                if ($user)  {                     
-                                    ## Update the users CAL in UsersHash
-                                    if ($bIsPremium) {
-                                        $htAllUsers_CAL.Set_Item($user.Key, "Premium")
-                                    }
-                                    else {
-                                        if ($user.Value -ne "Premium") {
-                                            $htAllUsers_CAL.Set_Item($user.Key, "Standard")
-                                        }
-                                    }
-                                }
-                            }
-
-                            ## Update the original Hash table
-                            $htAllUsers = $htAllUsers_CAL
+                        ## Check if the user is a group
+                        $grpParent = $importedADGroups | where { $_.distinguishedname -like $grpMember }
+                        if ($grpParent) {
+                            ## The user is a group
+                            $htChildGroupLists.Add($grpParent.name, $grpParent.distinguishedname)
                         }
                         else {
-                            if ($siteUser -ne "" -and $siteUser -ne "SHAREPOINT\System") {
-                                
-                                if ($siteUser.contains("CN")) {                                
-                                    $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $siteUser}
-                                }
-                                else {
-                                    if ($siteUser.contains("|") ) {
-                                        # Its a group
-                                        if($siteUser.StartsWith("c:")) {
-                                            Set-ADGroupMembersCAL -ADGroupName $siteUSer.Name -htADGroups $htADGroups -bIsPremium $bIsPremium -htAllUsers $htAllUsers
-                                        }
-                                        $userSplit = ($siteUser.Split("|")[1]) -split "\\"
-                                    }
-                                    elseif ($siteUser.contains("\")) {
-                                        $userSplit = $siteUser -split "\\"
+                            ## Add the user
+                            $arrGroupUserList += $grpMember
+                        }
+
+                        while ($htChildGroupLists.count -ne 0) {
+                            ## 
+                            $htChildGroups = @{}
+                            foreach ($arrChildGroupList in $htChildGroupLists.GetEnumerator()) {
+                            
+                                ## Get the Child group details
+                                $hashKey = $arrChildGroupList.Key
+                                $hashValue = $arrChildGroupList.Value
+
+                                ## Check if the user is a group
+                                $grpChild = $importedADGroups | where { $_.distinguishedname -like $hashValue }
+                                $grpChildMembers = $grpChild.Members -split ";"
+
+                                foreach($grpChildMember in $grpChildMembers) {  
+                                    ## Check if the user is a group
+                                    $grpParent = $importedADGroups | where { $_.distinguishedname -like $grpChildMember }                                  
+                                    if ($grpParent) {
+                                        ## The user is a group
+                                        $htChildGroups.Add($grpParent.name, $grpParent.distinguishedname)
                                     }
                                     else {
-                                        continue
+                                        ## Add the user
+                                        $arrGroupUserList += $grpChildMember
                                     }
-
-                                    ## Process AD users that are used in SP
-                                    $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
-                                    $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $getADUserByName.distinguishedname}
-                                }                                   
-                                
-                                if ($member) {
-                                    ## Update the users CAL in UsersHash
-                                    Set-SPUserCAL -bIsPremium $bIsPremium -member $member -htAllUsers $htAllUsers 
                                 }
                             }
-                        }                
-                    } ## End foreach siteUser
+
+                            ## Remove old groups from the list and replace with the child groups to avoid looping for same group
+                            $htChildGroupLists = $htChildGroups
+                        }
+                    }
+
+                    ## Add the group and it's members to the array
+                    $htADGroups.Add($grpName, $arrGroupUserList)                    
+                }
+            }
+        } ## End-of-loop
+
+        ## Iterate all SharePoint group(s) to merge AD group(s) user(s) with SP user(s)
+        $htAllGroups = @{}
+    
+        ## Convert Hashes to ArrayList
+        foreach ($htResultSPUserGroup in $htResultSPUserGroups.GetEnumerator()) {
+            $arrADGroupUsers = @()
+
+            ## Get details of current group
+            $grpDetails = $htResultSPUserGroup.Value
+
+            ## Check if the group has an AD Group
+            if ($grpDetails.ADGroups) {                
+                $arrADGroups = $grpDetails.ADGroups -split ";"
+
+                foreach ($grpAD in ($arrADGroups -split "\\")[1]) {
+                    $arrADGroupUsers += $htADGroups.GetEnumerator() | where {$_.Key -eq $grpAD}
                 }
             }
             
-            ## Process csv
-            $userCALs = $htAllUsers.GetEnumerator()
-
-            foreach ($userCAL in $userCALs) {
-                $details = New-Object PSObject
-                $details | Add-Member -MemberType NoteProperty -Name "User" -Value $userCAL.Key
-                $details | Add-Member -MemberType NoteProperty -Name "SPCALRequired" -Value $userCAL.Value
-
-                $resultUserCAL += $details
+            ## Find the Distinguished username for the user directly referencing in SP
+            $usersList = $htResultSPUserGroup.Value.UsersList -split ";"
+                    
+            foreach ($user in $usersList) {
+                if ($user -ne "" -and $user -ne "SHAREPOINT\System") {
+                    $userSplit = ($user.Split("|")[1]) -split "\\"
+                            
+                    ## Process AD users that are used in SP
+                    $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
+                    if ($arrADGroupUsers -notcontains $getADUserByName.distinguishedname) {
+                        $arrADGroupUsers += $getADUserByName.distinguishedname
+                    }
+                }
             }
             
-            ## Export user CAL information
-            $resultUserCAL | Export-Csv -Path $OutputFile3 -NoTypeInformation -Encoding UTF8
-		    LogText "User CAL report exported"
+            $htResultSPUserGroup.Value.UsersList = ($arrADGroupUsers -join ";")
+
+            ## Add the values to All Groups Hash table
+            $htAllGroups.Add($htResultSPUserGroup.Key, $htResultSPUserGroup.Value)
+
+            ## Default Action - Add the users to the list as array            
+            ## Array for Exporting SP Groups
+            $arrResultUserGroups += $htResultSPUserGroup.Value            
         }
-		else {
-            LogText "CAL cannot be calculated for following reasons:"
-            LogText "   1. AD Groups file could not be located in current working directory."
-            LogText "   2. AD Users file could not be located in current working directory."
-        }        
+        
+        ## Export all user groups
+        $arrResultUserGroups | Export-Csv -Path $OutputFile2 -NoTypeInformation -Encoding UTF8
+	    LogText "User Groups Exported"
+
+        ##
+        ## Calculate CAL
+        ##
+
+        ## Iterate through sites 
+        foreach ($site in $sites) {
+        
+            $waURL = $site.WebApp.Url
+            $scURL = $site.SiteDet.Url
+            $siteWebs = $site.SiteDet.AllWebs
+                        
+            foreach ($siteWeb in $siteWebs) { 
+        
+                $bIsPremium = $false
+
+                $siteURL = $siteWeb.URL
+                
+                ## Get list of Site Groups
+                $siteGroups = $siteWeb.Groups
+                $siteUsers = $siteWeb.Users
+
+                $sitePremiumFeatures = Get-SPFeature "PremiumWeb" -Web $siteURL -ErrorAction SilentlyContinue
+                if ($sitePremiumFeatures) {
+                    ## URL has premium features
+                    $bIsPremium = $true
+                }
+                
+                LogText ("Calculating CAL for site - " + $siteURL)
+
+                ## Get the groups the user is in from AllSPGroups
+                ## Update the Users list with CAL information required
+                foreach ($siteGroup in $siteGroups) {
+                    $objGroupDetails = $htAllGroups.GetEnumerator() | where {$_.Key -eq $siteGroup.Name}
+                    ## Check if the group has any users within it.
+                    
+                    if ($objGroupDetails.Value.UsersList.Length -eq 0 ) {
+                        continue
+                    }
+                    
+                    $grpMembers = $objGroupDetails.Value.UsersList -split ";"
+                    
+                    foreach ($grpMember in $grpMembers) {
+                        $grpMember = $grpMember.Trim()
+                        if ($grpMember -ne "" -and $grpMember -ne "SHAREPOINT\System") {
+                        
+                            if ($grpMember.contains("CN")) {                                
+                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $grpMember}
+                            }
+                            else {
+                                if ($grpMember.contains("|") ) {
+                                    $userSplit = ($grpMember.Split("|")[1]) -split "\\"
+                                    # Its an AD group
+                                    if($userSplit[0].StartsWith("c:")) {
+                                        Write-Host ("User is a Domain user - " + $userSplit[0])
+                                    }
+                                }
+                                elseif ($grpMember.contains("\")) {
+                                    $userSplit = $grpMember -split "\\"
+                                }
+                                else {
+                                    continue
+                                }
+
+                                ## Process AD users that are used in SP
+                                $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
+                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $getADUserByName.distinguishedname}
+                            }                                   
+                            if ($member) {
+                                ## Update the users CAL in UsersHash
+                                Set-SPUserCAL -bIsPremium $bIsPremium -member $member -htAllUsers $htAllUsers                                    
+                            }
+                        }
+                    }
+                }
+                
+                ## Update the Users list with CAL information required
+                ## Users - Has ADUsers and ADGroups
+                foreach ($siteUserDetail in $siteUsers) {
+                    $siteUser = $siteUserDetail.LoginName.Trim()
+
+                    ## CAL for All users within site
+                    ## check if the user is Authenticated users or Everyone
+                    if ($siteUser -eq "NT AUTHORITY\authenticated users" -or $siteUser -eq "c:0(.s|true") {
+                        $htAllUsers_CAL = @{}
+                        $allUsers = $htAllUsers.GetEnumerator()
+
+                        foreach ( $user in $allUsers ) {                                    
+                            if ($user)  {                     
+                                ## Update the users CAL in UsersHash
+                                if ($bIsPremium) {
+                                    $htAllUsers_CAL.Set_Item($user.Key, "Premium")
+                                }
+                                else {
+                                    if ($user.Value -ne "Premium") {
+                                        $htAllUsers_CAL.Set_Item($user.Key, "Standard")
+                                    }
+                                }
+                            }
+                        }
+
+                        ## Update the original Hash table
+                        $htAllUsers = $htAllUsers_CAL
+                    }
+                    else {
+                        if ($siteUser -ne "" -and $siteUser -ne "SHAREPOINT\System") {
+                            
+                            if ($siteUser.contains("CN")) {                                
+                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $siteUser}
+                            }
+                            else {
+                                if ($siteUser.contains("|") ) {
+                                    # Its a group
+                                    if($siteUser.StartsWith("c:")) {
+                                        Set-ADGroupMembersCAL -ADGroupName $siteUSer.Name -htADGroups $htADGroups -bIsPremium $bIsPremium -htAllUsers $htAllUsers
+                                    }
+                                    $userSplit = ($siteUser.Split("|")[1]) -split "\\"
+                                }
+                                elseif ($siteUser.contains("\")) {
+                                    $userSplit = $siteUser -split "\\"
+                                }
+                                else {
+                                    continue
+                                }
+
+                                ## Process AD users that are used in SP
+                                $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
+                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $getADUserByName.distinguishedname}
+                            }                                   
+                            
+                            if ($member) {
+                                ## Update the users CAL in UsersHash
+                                Set-SPUserCAL -bIsPremium $bIsPremium -member $member -htAllUsers $htAllUsers 
+                            }
+                        }
+                    }                
+                } ## End foreach siteUser
+            }
+        }
+        
+        ## Process csv
+        $userCALs = $htAllUsers.GetEnumerator()
+
+        foreach ($userCAL in $userCALs) {
+            $details = New-Object PSObject
+            $details | Add-Member -MemberType NoteProperty -Name "User" -Value $userCAL.Key
+            $details | Add-Member -MemberType NoteProperty -Name "SPCALRequired" -Value $userCAL.Value
+
+            $resultUserCAL += $details
+        }
+        
+        ## Export user CAL information
+        $resultUserCAL | Export-Csv -Path $OutputFile3 -NoTypeInformation -Encoding UTF8
+	    LogText "User CAL report exported"
+        
     }
     catch {
-        LogError -errorDescription "An exception ocured while processing CAL for SharePoint"
+        LogError -errorDescription "An exception occurred while processing CAL for SharePoint"
 		LogLastException
     }
 }
