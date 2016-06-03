@@ -1,17 +1,13 @@
-﻿ ##########################################################################
- # 
- # Get-LyncUsers
- # SAM Gold Toolkit
- # Original Source: Akshay Chiddarwar (Sam360)
- #
- ##########################################################################
+﻿##########################################################################
+# 
+# Get-LyncUsers
+#
+##########################################################################
 
 <#
 .SYNOPSIS
- Retrieves list of lync users from remote computer
- 
-    Files are written to current working directory
-
+ The Get-LyncUsers script queries a single Lync server and produces up 1 CSV files
+	1)    LyncUsers.csv - One record per user including enabled features and required CAL
 
 .PARAMETER      UserName
 Lync Server Username
@@ -21,7 +17,7 @@ Lync Server Password
 
 .PARAMETER      LyncServerName
 Accepts a Fully Qualified Lync Server Domain Name
-e.g. Server01.<Domain Name>
+e.g. Server01.domain.local
 
 .PARAMETER		OutputFile1
 Output CSV file to store the results
@@ -45,11 +41,12 @@ function LogText {
 	param(
 		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
 		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$NoNewLine = $false  
 	)
 
 	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$NoNewLine
 
 	if ($LogFile) {
 		$Object | Out-File $LogFile -Encoding utf8 -Append 
@@ -107,8 +104,43 @@ function LogLastException() {
 
 	Start-Sleep -s 3
 }
-                                                                          
+
+function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){
+	if ($Message) {
+		LogText $Message -color Yellow
+	}
+
+	if ($DefaultValue) {
+		$Prompt += " (Default [$DefaultValue])"
+	}
+
+	$Prompt += ": "
+	LogText $Prompt -color Yellow -NoNewLine
+	$strResult = Read-Host -AsSecureString:$AsSecureString
+
+	if(!$strResult) {
+		$strResult = $DefaultValue
+	}
+
+	return $strResult
+}
+
+function Get-ConsoleCredential([String] $Message, [String] $DefaultUsername)
+{
+	$strUsername = QueryUser -Message $Message -Prompt "Username" -DefaultValue $DefaultUsername
+	if (!$strUsername){
+		return $null
+	}
+
+	$strSecurePassword = QueryUser -Prompt "Password" -AsSecureString
+	if (!$strSecurePassword){
+		return $null
+	}
+
+	return new-object Management.Automation.PSCredential $strUsername, $strSecurePassword
+}                                                                     
 function LogEnvironmentDetails {
+	LogText -Color Gray " "
 	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
 	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
 	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
@@ -134,25 +166,6 @@ function LogEnvironmentDetails {
 	LogText -Color Gray "Output File 1:        $OutputFile1"
 	LogText -Color Gray "Log File:             $LogFile"
 	LogText -Color Gray ""
-}
-
-
-function LogLastException() {
-	$currentException = $Error[0].Exception;
-
-	while ($currentException)
-	{
-		write-output $currentException
-		write-output $currentException.Data
-		write-output $currentException.HelpLink
-		write-output $currentException.HResult
-		write-output $currentException.Message
-		write-output $currentException.Source
-		write-output $currentException.StackTrace
-		write-output $currentException.TargetSite
-
-		$currentException = $currentException.InnerException
-	}
 }
 
 function EnvironmentConfigured {
@@ -184,10 +197,12 @@ function CalculateCAL($bUserStatus, $bStdCAL, $bEntCAL, $bPlusCAL) {
 }
 
 function Get-LyncUsers {
+	InitialiseLogFile
 	LogEnvironmentDetails
 
 	Try {
-        $boolAuthenticate = $false
+        $bAuthenticate = $false
+		$currConnectionMethod = ""
 
         if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "SnapIn") {
             $getModule = Get-Module -ListAvailable -Name Lync
@@ -197,8 +212,8 @@ function Get-LyncUsers {
                 Import-Module Lync -ErrorAction SilentlyContinue -ErrorVariable $errImport
                 if (EnvironmentConfigured) {
 		            LogProgress -activity "Lync Server - Module" -Status "Loaded Lync module" -percentComplete 10 
-                    $boolAuthenticate = $true
-                    $ConnectionMethod = "SnapIn"
+                    $bAuthenticate = $true
+                    $currConnectionMethod = "SnapIn"
                 }
             }
         }
@@ -206,22 +221,15 @@ function Get-LyncUsers {
         # If ConnectionMethod = Both
         # Check if importing module was successful from SnapIn method. 
         # If not then try the RemoteSession.
-        if (!$boolAuthenticate -and ( $ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "RemoteSession" ) ) {
+        if (!$bAuthenticate -and ( $ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "RemoteSession" ) ) {
 
-			if (!($LyncServer))
-			{
-				$strPrompt = "Lync Server FQDN (Default [$($env:computerName).$($env:USERDNSDOMAIN)])"
-				$LyncServer = Read-Host -Prompt $strPrompt
-				if (!($LyncServer))
-				{
-					$LyncServer = "$($env:computerName).$($env:USERDNSDOMAIN)"
-				}
+			if (!$LyncServer) {
+				$LyncServer = QueryUser -Prompt "Lync Server FQDN" -DefaultValue "$($env:computerName).$($env:USERDNSDOMAIN)"
 			}
 
         	# Create the Credentials object if username has been provided
-			LogProgress -activity "Lync Data Export" -Status "Lync Server Administrator Credentials Required" -percentComplete 2
 			if(!($UserName -and $Password)){
-				$lyncCreds = Get-Credential
+				$lyncCreds = Get-ConsoleCredential -DefaultUsername $UserName -Message "Lync Server Administrator Credentials Required"
 			}
 			else 
 			{
@@ -235,7 +243,10 @@ function Get-LyncUsers {
             $session = New-PSSession -ConnectionURI $uri -Credential $lyncCreds -ErrorAction SilentlyContinue
 
             if(-not($session)) {
-                LogError "Process Failed - This server does not have Lync installation. Please try again with appropriate Lync Server."
+                LogError ("The script was unable to connect to Lync server", 
+							"To maximise the chance of connectivity, please",
+							"   1) Ensure that the Lync PowerShell Module is installed on this device and/or",
+							"   2) Execute this script on the Lync server")
 			    Exit
             }
             else {
@@ -244,12 +255,12 @@ function Get-LyncUsers {
                 # Import authenticated session
                 $importSession = Import-PsSession $session -AllowClobber
                 
-                $boolAuthenticate = $true
-                $ConnectionMethod = "RemoteSession"
+                $bAuthenticate = $true
+                $currConnectionMethod = "RemoteSession"
             }
 	    }
 		
-        if($boolAuthenticate) {
+        if($bAuthenticate) {
 		    LogProgress -activity "Lync Data Export" -Status "Loading Lync users" -percentComplete 12
             $users = Get-CsUser
     
@@ -283,7 +294,7 @@ function Get-LyncUsers {
 					$percent += [int]$subInterval
 				    
 					# Get details of the Conferencing Policy
-                    if($ConnectionMethod -eq "SnapIn") {
+                    if($currConnectionMethod -eq "SnapIn") {
                         $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy.FriendlyName)}
                     }
                     else {
@@ -326,7 +337,7 @@ function Get-LyncUsers {
 					$percent += [int]$subInterval
 								
                     # Get details of the Voice Policy
-                    if($ConnectionMethod -eq "SnapIn") {
+                    if($currConnectionMethod -eq "SnapIn") {
                         $userVoicePolicy = $VoicePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.VoicePolicy.FriendlyName)}
                     }
                     else {
@@ -389,7 +400,10 @@ function Get-LyncUsers {
 		    LogProgress -activity "Lync Data Export" -Status "Lync User Data Exported" -percentComplete 100
         }
         else {
-		    LogError "Lync Server Authentication Failed" 
+		    LogError ("The script was unable to connect to Lync server", 
+						"To maximise the chance of connectivity, please",
+						"   1) Ensure that the Lync PowerShell Module is installed on this device and/or",
+						"   2) Execute this script on the Lync server") 
         }
 	}
     catch {
