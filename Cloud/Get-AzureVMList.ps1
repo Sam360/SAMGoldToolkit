@@ -1,46 +1,44 @@
  #########################################################
  #                                                                     
  # Get-AzureVMList
- # SAM Gold Toolkit
- # Original Source: Akshay Chiddarwar (Sam360)
- #					Michael Brennan (Sam360)
  #
  #########################################################
-
 
  <#
 .SYNOPSIS
 Retrieves Azure installation data from a added Microsoft account
 
 .DESCRIPTION
-Retrieves installation information for multiple accounts and outputs this information to a csv file. This information includes SubscriptionId,
-SubscriptionName, Environment supported modes, DefaultAccount and more.
+Retrieves installation information from classic and resource manager(ARM) Azure VM for multiple accounts and outputs this information to a csv file. 
+This information includes SubscriptionId,SubscriptionName, Environment supported modes, DefaultAccount and more.
 The User needs to pass the credentials to execute the script
 
 .PARAMETER      USERNAME
-Azure Account Username
+Enter only Organisational(work) or Student Azure Account Username
 
 .PARAMETER       PASSWORD
 Azure Account Password
 
-.PARAMETER OUTPUTFILE
+.PARAMETER OUTPUTFILE1
 Output CSV file to store the results
 
+.PARAMETER OUTPUTFILE2
+Output CSV file to store the results
 
 EXAMPLE DATA WITH 1 DISK
 
 Subscription Name = BizSpark
-Subscription ID = 34dd2b84-xxxx-xxxx-xxxx-3fb6df88a4d0
-Default Account = <email>
+Subscription ID = 34dd2b84-xxxx-xxxx-xxxx-3fbd0
+Default Account = [email]
 Environment = AzureCloud
-VM Name = <vm-name>
+VM Name = [vm-name]
 VM IP Address = xxx.xxx.xxx.xxx
-DNS Name = http://<vm-name>.cloudapp.net/
+DNS Name = http://[vm-name].cloudapp.net/
 VM Status = Started
 Availability Set Name = xdc
 Virtual Network Name = VNETEast
 OS = Windows Server 2012 R2 Datacenter, September 2015
-VM Image Name = <id>__Windows-Server-2012-R2-201505.01-en.us-127GB.vhd
+VM Image Name = [id]__Windows-Server-2012-R2-201505.01-en.us-127GB.vhd
 Total Disk = 1
 Total Disk Size in GB = 30
 Disk Location = Japan West;
@@ -49,396 +47,327 @@ Disk Location = Japan West;
 EXAMPLE DATA WITH 2 DISK
 
 Subscription Name = BizSpark
-Subscription ID = 95946428-xxxx-xxxx-xxxx-3fb6df88a4d0
-Default Account = <email>
+Subscription ID = 95946428-xxxx-xxxx-xxxx-3fbd0
+Default Account = [email]
 Environment = AzureCloud
-VM Name = <vm-name>
+VM Name = [vm-name]
 VM IP Address = xxx.xxx.xxx.xxx
-DNS Name = http://<vm-name>.cloudapp.net/
+DNS Name = http://[vm-name].cloudapp.net/
 VM Status = Started
 Availability Set Name = xdc
 Virtual Network Name = 
 OS = Ubuntu Server 15.04
-VM Image Name = <id>__Ubuntu-15_04-amd64-server-20150910-en-us-30GB
+VM Image Name = [id]__Ubuntu-15_04-amd64-server-20150910-en-us-30GB
 Total Disk = 2
 Total Disk Size in GB = 148
 Disk Location = East US 2; East US 2
 
+EXAMPLE DATA FOR RM VM
+
+SubscriptionId = 2cb877e2-xxxx-xxxx-xxxx-404b
+SubscriptionName = MSDN
+Resource Group Name = [resource-group-name]
+VM Name = [vm-name]
+License Type = 
+Location = eastus
+Availability Set = [set-name]
+Instance Size = Standard_A1
+Admin Username = AdminName
+VM Provisioning State = Succeeded
+Creation Method = FromImage
+Publisher = MicrosoftWindowsServer
+OS = WindowsServer
+VM Image Name = 2012-R2-Datacenter
+VM Image Version = latest
+VM Private IP Address = xxx.xxx.xxx.xxx
+VM Private IP Allocation Method = [Dynamic/Static]
+
 #>
 
-
 Param(
-	$UserName,
-	$Password,
+	$AzureUserName,
+	$AzurePassword,
 	[alias("o1")]
-	$OutputFile = "AzureVMList.csv",
+	$OutputFile1 = "AzureClassicVMList.csv",
+	[alias("o2")]
+	$OutputFile2 = "AzureRMVMList.csv",
 	[alias("log")]
 	[string] $LogFile = "AzureLogFile.txt"
 )
 
-function LogEnvironmentDetails {
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	Write-Output "Computer Name:            $($env:COMPUTERNAME)"
-	Write-Output "User Name:                $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	Write-Output "Windows Version:          $($OSDetails.Caption)($($OSDetails.Version))"
-	Write-Output "PowerShell Host:          $($host.Version.Major)"
-	Write-Output "PowerShell Version:       $($PSVersionTable.PSVersion)"
-	Write-Output "PowerShell Word size:     $($([IntPtr]::size) * 8) bit"
-	Write-Output "CLR Version:              $($PSVersionTable.CLRVersion)"
-	
-}
-
-function LogLastException() {
-	$currentException = $Error[0].Exception;
-
-	while ($currentException)
-	{
-		write-output $currentException
-		write-output $currentException.Data
-		write-output $currentException.HelpLink
-		write-output $currentException.HResult
-		write-output $currentException.Message
-		write-output $currentException.Source
-		write-output $currentException.StackTrace
-		write-output $currentException.TargetSite
-
-		$currentException = $currentException.InnerException
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
 	}
 }
 
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ) {
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$noNewLine = $false 
+	)
+
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
 	
 	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
 	
-	if ($Verbose)
-	{
-		write-output ""
-		$output = Get-Date -Format HH:mm:ss.ff
-		$output += " - "
-		$output += $Status
-		write-output $output
-	}
-}
-
-function Get-NETFramework($version) {
-    $installedVersions = Get-ChildItem 'HKLM:\SOFTWARE\Microsoft\NET Framework Setup\NDP' -recurse |
-                            Get-ItemProperty -name Version -EA 0 |
-                            Where { $_.PSChildName -match '^(?!S)\p{L}'} |
-                            Select Version
-    
-    foreach ( $ver in $installedVersions ) {    
-        if ($ver.Version -ge $version) {
-            return $true
-        }
-    }
-    return $false
-}
-
-function VerifySignature([string]$msiPath) {
-	$sign = Get-AuthenticodeSignature $msiPath
-
-	if ($sign.Status -eq 'Valid') {
-		$signDict = ($sign.SignerCertificate.Subject -split ', ') |
-         foreach `
-             { $signDict = @{} } `
-             { $item = $_.Split('='); $signDict[$item[0]] = $item[1] } `
-             { $signDict }
-
-		if ($signDict['CN'] -eq 'Microsoft Corporation' -and $signDict['O'] -eq 'Microsoft Corporation' ) {
-			return 1
-		}
-		else {
-			return 0
-		}
-	}
-}
-
-function Get-InstalledApps {
-
-    # Create 
-    if ([IntPtr]::Size -eq 4) {
-        $regpath = 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-    }
-    else {
-        $regpath = @(
-            'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*'
-            'HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
-        )
-    }
-    Get-ItemProperty $regpath | .{process{if($_.DisplayName -and $_.UninstallString) { $_ } }} | Select DisplayName, Publisher, InstallDate, DisplayVersion, UninstallString |Sort DisplayName
-}
-
-function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msiFileName) {
-		
-	# Check if Azure dependency has been installed.
-    $InstallCheck = Get-InstalledApps | where {$_.DisplayName -like $InstallName}
-
-	if ($InstallCheck.Name -eq $null) {
-		$msifile = $scriptPath + '\' + $msiFileName
-
-		# Download the required msi
-		$webclient = New-Object System.Net.WebClient
-		$webclient.DownloadFile($msiURL, $msifile)
-		
-		#Check if the file exist in the directory and install on the system
-		if (Test-Path $msifile) {
-
-			# Check the msi installer signature and then allow installation	
-			if (VerifySignature($msifile)) {
-				msiexec /i $msifile /qn | Out-Null
-			}
-			else {
-				$percent = 100
-				LogProgress -Activity "MSI Verification" -Status "Msol msi file signature verification failed" -percentComplete $percent
-			
-				return $false
-			}
-			
-			# Check if dependency Msol has been installed.
-			$InstallCheck = Get-WmiObject -Class Win32_Product | select Name | where { $_.Name -match $InstallName}
-			
-			if ($InstallCheck.Name -eq $null) {
-				$percent = 100
-				LogProgress -Activity "Installation Error" -Status "Msol msi could not be installed. Please check if you have admin rights" -percentComplete $percent
-				
-				return $false
-			}
-        }
-		else {
-			$percent = 100
-			LogProgress -Activity "Dependency Download error" -Status "Could not download Msol msi file in the script path" -percentComplete $percent
-			
-			Write-Host 'A problem occured while downloading the msi file. If problem persist then please manually install the required msi file downloadable from ($msiURL)'
-			return $false
-		}
+	if ($Verbose){
+		LogText ""
 	}
 
-    # return true if product is already installed
-    # return true if installation succeeds
-    return $true
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $Status
+	LogText $output -Color Green
 }
 
-function InstallWebPIProduct([string]$InstallName) {
-    $ProductManager = New-Object Microsoft.Web.PlatformInstaller.ProductManager
-    $ProductManager.Load()
-    $product = $ProductManager.Products | Where { $_.ProductId -eq $InstallName }
-    
-    # Dependency check for product
-    $dependenciesRequired = $product.AllDependencies | select ProductId, Version
-    foreach($dependency in $dependenciesRequired) {
-        if ($dependency.ProductId -eq "NETFramework45") {
-            if (! (Get-NETFramework -version $dependency.Version) ) {                
-                $productFramework45 = $ProductManager.Products | Where { $_.ProductId -eq $dependency.ProductId }
-                $installStatus = InstallUsingWebPI -Language $ProductManager.GetLanguage("en") -Product $productFramework45
-            }
-        }
-        
-        if ($dependency.ProductId -eq "WindowsManagementFramework_86_64") {
-            $currentVersion = $PSVersionTable.WSManStackVersion | select Major,Minor
-            $currVersionDouble = [string]$currentVersion.Major + "." + [string]$currentVersion.Minor
-            if ($currVersionDouble -lt $dependency.Version) {
-                $productWMF = $ProductManager.Products | Where { $_.ProductId -eq $dependency.ProductId }
-                $installStatus = InstallUsingWebPI -Language $ProductManager.GetLanguage("en") -Product $productWMF
-            }
-        }
-    }
-    
-    #Install the Product
-    $installStatus = InstallUsingWebPI -Language $ProductManager.GetLanguage("en") -Product $product    
+function LogError([string[]]$errorDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
 }
 
-function InstallUsingWebPI ($Language, $Product) {
-    [reflection.assembly]::LoadWithPartialName("Microsoft.Web.PlatformInstaller") | Out-Null
-   
-    #Load Installer
-    $InstallManager = New-Object Microsoft.Web.PlatformInstaller.InstallManager
-    
-    $installertouse = $Product.GetInstaller($Language)
- 
-    $installer = New-Object 'System.Collections.Generic.List[Microsoft.Web.PlatformInstaller.Installer]'
-    $installer.Add($installertouse)
-    $InstallManager.Load($installer)
- 
-    $failureReason = $null
-    foreach ($installerContext in $InstallManager.InstallerContexts) {
-        $InstallManager.DownloadInstallerFile($installerContext, [ref]$failureReason)
-    }
-    
-    if ($failureReason -ne $null) {
-        $installstatus = $InstallManager.StartInstallation()
+function LogLastException() {
+    $currentException = $Error[0].Exception;
 
-        $installProgress = $InstallManager.InstallerContexts | select InstallationState
-        
-        while($installProgress -ne "InstallCompleted") {
-            $installProgress = $InstallManager.InstallerContexts | select InstallationState
-            
-            #Check if installation is still in progress or it has come across any error
-            if ($installProgress.InstallationState -eq "InstallCompleted") {
-                return $true
-            }
-            elseif (($installProgress.InstallationState -eq "Installing") -or `
-                ($installProgress.InstallationState -eq "Downloaded") -or `
-                ($installProgress.InstallationState -eq "Downloading") ) {
-                
-                # Wait for 10 seconds
-                Start-Sleep -s 10
-                $installProgress = $InstallManager.InstallerContexts | select InstallationState
-            }
-            else {
-                return $false
-            }
-        }
-        
-        return $true
+    while ($currentException)
+    {
+        LogText -Color Red $currentException
+        LogText -Color Red $currentException.Data
+        LogText -Color Red $currentException.HelpLink
+        LogText -Color Red $currentException.HResult
+        LogText -Color Red $currentException.Message
+        LogText -Color Red $currentException.Source
+        LogText -Color Red $currentException.StackTrace
+        LogText -Color Red $currentException.TargetSite
+
+        $currentException = $currentException.InnerException
     }
-    else {
-        return $false
-    }
+
+	Start-Sleep -s 3
 }
-function Get-AzureVMList{	
+                                                                          
+function LogEnvironmentDetails {
+	LogText -Color Gray " "
+	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+	LogText -Color Gray " "
+	LogText -Color Gray " Get-AzureVMList.ps1"
+	LogText -Color Gray " "
+
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
+	LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+	LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
+	LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
+	LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+	LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+	LogText -Color Gray "Username Parameter:   $AzureUserName"
+	LogText -Color Gray "Username Parameter:   $InstallDependency"
+	LogText -Color Gray "Output File 1:        $OutputFile1"
+	LogText -Color Gray "Output File 2:        $OutputFile2"
+	LogText -Color Gray "Log File:             $LogFile"
+	LogText -Color Gray ""
+}
+
+function Get-CurrentWMFVersion {
+    $currVersion_WMF = $PSVersionTable.WSManStackVersion | select Major,Minor
+    $currVersionStr_WMF = ([string]$currVersion_WMF.Major + "." + [string]$currVersion_WMF.Minor)
+	LogText ("Current WMF Version - " + $currVersionStr_WMF)
+	return $currVersionStr_WMF
+}
+
+function Get-AzureVMList {	
+	InitialiseLogFile
 	LogEnvironmentDetails
-	LogProgress -Activity "Azure VM List Export" -Status "Logging environment details" -percentComplete 2
 
+    $percent = 0	
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	$OSArch = $OSDetails.OSArchitecture	
+	
     ## Check if Azure cmdlets are installed.
     ## Install dependencies if they don't exist.
-    $AzureModule = Get-Module -Name Azure
+    $AzureModule = Get-Module -ListAvailable -Name Azure
+    
+    $percent = $percent + 1
+	LogProgress -activity "Azure VM List - Dependency" -Status "Checking if dependent modules are installed." -percentComplete $percent
+	
     if($AzureModule) {
+		## Check in case of existing Azure Installation
+		if ($AzureModule.Version.Major -lt 1) {
+			## Needs to update the Azure Module.
+			$percent = 100
+			LogProgress -activity "Azure VM List - Dependency" -Status "An old version of Azure PowerShell is detected. Please install the latest version of Azure Powershell from (http://aka.ms/webpi-azps) and re-run the script." -percentComplete $percent
+	
+			exit
+		}
+		
+		$percent = $percent + 1
+		LogProgress -activity "Azure VM List - Dependency" -Status "Loading the Azure Module." -percentComplete $percent
+	
         Import-Module Azure
     }
     else {
-        if($OSArch -eq "64-bit") {
-            $msi_url_wpi = "http://download.microsoft.com/download/C/F/F/CFF3A0B8-99D4-41A2-AE1A-496C08BEB904/WebPlatformInstaller_amd64_en-US.msi"
-        }
-        else {
-            $msi_url_wpi = "http://download.microsoft.com/download/C/F/F/CFF3A0B8-99D4-41A2-AE1A-496C08BEB904/WebPlatformInstaller_x86_en-US.msi"
-        }
-        $exec = DependencyInstaller -InstallName "Microsoft Web Platform Installer*" -msiURL $msi_url_wpi -msiFileName "wpilauncher.msi"
+		$WMFVersion = Get-CurrentWMFVersion
 
-        if ($exec) {
-        
-            # Check for .NET Framework to install Azure powershell cmdlets
-            if (! (Get-NETFramework -version 4) ) {
-                $installStatus = InstallUsingWebPI -InstallName "NETFramework4"
-            }
-            
-            $installStatus = InstallUsingWebPI -InstallName "WindowsAzurePowerShell"
-            if ($installStatus) {
-                try {
-                    Import-Module "C:\Program Files (x86)\Microsoft SDKs\Azure\PowerShell\ServiceManagement\Azure\Azure.psd1"                    
-                }
-                catch {
-		            LogLastException
-		            LogProgress -activity "Azure VM List Export" -Status "Problem in loading azure dependencies." -percentComplete 100
-                    exit
-                }
-            }
-            else {
-		        LogProgress -activity "Azure VM List Export" -Status "Problem in installing azure dependencies." -percentComplete 100
-                exit
-            }
-        }
-        else {
-		    LogProgress -activity "Azure VM List Export" -Status "Problem in installing dependencies." -percentComplete 100
-            exit
-        }
+		LogText "The required Azure PowerShell components are not installed on this device."
+		LogText "The following components are required and needs to be installed in the specified order"
+		if ($WMFVersion -lt "3.0") {
+			LogText " * Windows Management Framework 3.0 or greater - https://www.microsoft.com/en-us/download/details.aspx?id=34595"
+		}		
+		LogText " * Microsoft Web Platform Installer with Azure Powershell - http://aka.ms/webpi-azps"
+		LogText " * Azure PowerShell latest version from Microsoft Web Platform Installer if not loaded automatically."
+		LogText ""
+
+		$percent = 100
+		LogProgress -activity "Azure VM List - Dependency" -Status "Please re-run the script once the above mentioned Azure PowerShell dependencies are installed. Script Exiting" -percentComplete $percent
+	
+		exit
     }
 
-    #Clear-AzureProfile -Force
-    $LoginFlag = $false
+	try {
+		##
+        ## Get Classic Azure VM details
+        ##
+        $LoginFlag = $false
+        # Clear the logged in user session.
+        Clear-AzureProfile -Force
 
-	Try {
-		
 		## Process the user credentials passed through terminal
-		if ($UserName -and $Password) {
-			$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+		if ($AzureUserName -and $AzurePassword) {
+			$securePassword = ConvertTo-SecureString $AzurePassword -AsPlainText -Force
 
 			## Convert to Azure account aceptable		
-			$cred = New-Object -TypeName System.Management.Automation.PSCredential ($UserName, $securePassword)
-				
-			LogProgress -activity "Azure VM List Export" -Status "Add Credentials from Terminal" -percentComplete 5
+			$cred = New-Object -TypeName System.Management.Automation.PSCredential ($AzureUserName, $securePassword)
+			
+            $percent = $percent + 2
+			LogProgress -activity "Azure VM List Export" -Status "Processing credentials from command line" -percentComplete $percent
+
 			## Add the account user has entered
-			$AzureAccount = Add-AzureAccount -Credential $cred
-            $LoginFlag = $true
+			$AzureAccount = Add-AzureAccount -Credential $cred -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
+            if ($errAddAccount.count -eq 0) {
+                $LoginFlag = $true
+            }
+            else {
+                LogError -errorDescription "An error occured while trying to login into the azure account. Please check your credentials or try again later."
+                Exit
+            }
 		}
 		else {
             $loggedAccount = Get-AzureAccount
 
 		    if ($loggedAccount.count -eq 0) {
-			    LogProgress -activity "Azure VM List Export" -Status "Request Credentials from User" -percentComplete 5
-			    $AzureAccount = Add-AzureAccount
-                $LoginFlag = $true            
+                $percent = $percent + 2
+			    LogProgress -activity "Azure VM List Export" -Status "Azure Credentials Required" -percentComplete $percent
+			    $AzureAccount = Add-AzureAccount -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
+
+                if ($errAddAccount.count -eq 0) {
+                    $LoginFlag = $true
+                }
+                else {
+                    LogError -errorDescription "An error occured while trying to login into the azure account. Please check your credentials or try again later."
+                    Exit
+                }
 			}            				
 		}
 	    
         if($LoginFlag) {
-		    LogProgress -activity "Azure VM List Export" -Status "Checking if login was successful" -percentComplete 6
 		    ## Check if the account is logged in successfully
 		    $loggedAccount = Get-AzureAccount
 
 		    if ($loggedAccount.count -eq 0) {
-			    Write-Output "Login failed."
+			    LogError "Login failed."
 			    Exit
 		    }					
 		}
 
-		LogProgress -activity "Azure VM List Export" -Status "Credentials accepted, Continue" -percentComplete 8
-			
 		## Get the Subscription List
-		LogProgress -activity "Azure VM List Export" -Status "Get Subscription Details" -percentComplete 10
+        $percent = $percent + 2
+		LogProgress -activity "Azure VM List Export" -Status "Credentials accepted, Get Subscription Details" -percentComplete $percent			
 		$subscriptions = Get-AzureSubscription -EV AzSubscriptionError -EA Stop
 
 		$subscriptionCount = $subscriptions.count
-		$tempValue = [int](85 / $subscriptionCount) / 5
-		$subIntervalActivity = $tempValue * 2
-		$subInterval = $tempValue * 2
-		$percent = 11
+		$tempValue = [int](40 / $subscriptionCount)
+		$subInterval = [int]($tempValue / 3)
 		
-        #$ListAzureVMImages = Get-AzureVMImage
-        
+        $percent = $percent + 1		
 		LogProgress -activity "Azure VM List Export" -Status "Loop through multiple subscription if any." -percentComplete $percent
 
 		## Array for storing csv file details
 		$results = @()
 
 		## Loop through each subscription
-		foreach ($subsciption in $subscriptions) {
+		foreach ($subscription in $subscriptions) {
+	        $percent += $subInterval
+	        LogProgress -activity "AzureRM VM List Export" -Status "Start data collection for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
 
-			## Get the Subscription Basic
-			$SubscriptionId = $subsciption.SubscriptionId
-			$SubscriptionName = $subsciption.SubscriptionName
-			$DefaultAccount = $subsciption.DefaultAccount
-			$Environment = $subsciption.Environment
+	        ## Get Subscription basic details
+			$SubscriptionId = $subscription.SubscriptionId
+			$SubscriptionName = $subscription.SubscriptionName
 
-			## Set Default Subscription to get all its details
-			Select-AzureSubscription -SubscriptionId $SubscriptionId
+		    ## Check if user has access to the subscription
+            try {
+	            ## Set Default Subscription to get all its details
+	            $selectedSub = Select-AzureSubscription -SubscriptionId $SubscriptionId
+            }
+            catch {
+		        LogError -errorDescription "The Loggedin user does not has access for subscription - $SubscriptionName ($SubscriptionId)." -color Red
+		        Continue
+            }
 
 			## Check if the session is expired
 			## Throws an exception if session is expired
-			try {			
-				## $ADUser = Get-AzureADUser
+			try {
 				$percent += [int]$subIntervalActivity
-				LogProgress -activity "Azure VM List Collection" -Status "Get VM List for Account Validation for Subscription: $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+				LogProgress -activity "Azure VM List Collection" -Status "Get VM List for Account Validation for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+
 				$vmList = Get-AzureVM -EV vmListError -EA SilentlyContinue
+                if ($vmList -eq $null) {
+                    LogText  " The subscription - $SubscriptionName ($SubscriptionId), does not have any VM"
+                    Continue
+                }
+
 				$vmListtype = $vmList.GetType()
 			}			
 			catch {
 				## Remove the saved user account credentials, if session has expired
-				#Remove-AzureAccount -Name $loggedAccount.Id -Force
+				# Remove-AzureAccount -Name $loggedAccount.Id -Force
 				Clear-AzureProfile -Force
-
-				Write-Output "====> Your Azure credentials might have not setup or expired. Continuing with another subscription if available."
-				LogProgress -activity "Azure VM List Collection **Error**" -Status "Session Expired. Exit" -percentComplete $percent
+				LogError -errorDescription "An error occurred querying VMs for subscription $SubscriptionName ($SubscriptionId). Credentials may have expired." -color Red
 				Continue
 			}
 
 			## Interval decided upon previous completion divided by Number of VM's and
 			## further divided by 5 main process
 			$vmCount = $vmList.count
-			$completePercentInterval = ($subInterval / $vmCount) / 5
+	        $vmPercentInterval = [int]($subInterval / $vmCount)
 
-			foreach ($vm in $vmList) {
-				$vmLocation = $vm.Location
-
+	        foreach ($vm in $vmList) {
+	            $percent += $vmPercentInterval                
+	            LogProgress -activity "Azure VM List Export" -Status ("Start data collection for VM - " + $vm.Name) -percentComplete $percent
+                 
                 $vmEndpoints = Get-AzureEndpoint -VM $vm
                 if ($vmEndpoints) {
                     foreach ($ed in $vmEndpoints) {
@@ -446,54 +375,210 @@ function Get-AzureVMList{
                     }
                 }
                 
-				$details = @{
-					"Subscription Name" = $SubscriptionName
-					"Subscription ID" = $SubscriptionId
-					"Default Account" = $DefaultAccount
-					Environment = $Environment
-				    "Deployment Name" = $vm.DeploymentName
-					"VM Name" = $vm.Name
-                    "Label" = $vm.Label
-                    "Host Name" = $vm.HostName
-                    "Service Name" = $vm.ServiceName
-                    "Availability Set" = $vm.AvailabilitySetName
-					"DNS Name" = $vm.DNSName
-				    "Instance Name" = $vm.InstanceName
-				    "Instance Size" = $vm.InstanceSize
-                    "Power State" = $vm.PowerState
-					"VM Status" = $vm.Status
-					"VM IP Address" = $vm.IpAddress
-                    "Public IP Address" = $vm.PublicIPAddress
-                    "Public IP Name" = $vm.PublicIPName
-					"Virtual Network Name" = $vm.VirtualNetworkName
-					OS = $vm.VM.OSVirtualHardDisk.OS
-					"VM Image Name" = $vm.VM.OSVirtualHardDisk.SourceImageName
-				}
-				$results += New-Object PSObject -Property $details
+                $vmDetails = $subscription | Select -Property SubscriptionId, SubscriptionName, DefaultAccount, Environment
+                              
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Deployment Name" -Value $vm.DeploymentName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Name" -Value $vm.Name
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Label" -Value $vm.Label
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Host Name" -Value $vm.HostName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Service Name" -Value $vm.ServiceName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Availability Set" -Value $vm.AvailabilitySetName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "DNS Name" -Value $vm.DNSName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Instance Name" -Value $vm.InstanceName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Instance Size" -Value $vm.InstanceSize
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Power State" -Value $vm.PowerState
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Status" -Value $vm.Status
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM IP Address" -Value $vm.IpAddress
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Public IP Address" -Value $vm.Location
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Public IP Name" -Value $vm.PublicIPName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Virtual Network Name" -Value $vm.VirtualNetworkName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "OS" -Value $vm.VM.OSVirtualHardDisk.OS
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Image Name" -Value $vm.VM.OSVirtualHardDisk.SourceImageName
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Endpoints" -Value $vmEndpoints
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Location" -Value $vm.Location
+
+		        $results += $vmDetails
 			}
-			
-			$percent += [int]$subIntervalActivity
-			LogProgress -activity "Azure VM List Export" -Status "Start CSV Export for Subscription - $SubscriptionId" -percentComplete $percent
 		}
         
-		$results | Export-Csv -Path $OutputFile -NoTypeInformation -Encoding UTF8
-        Write-Host "Export Completed"
+	    $percent += 1
+	    LogProgress -activity "AzureRM VM List Export" -Status "Start Exporting data to csv file $OutputFile1" -percentComplete $percent
 
-		LogProgress -activity "Azure VM List Export" -Status "CSV Export Complete" -percentComplete 100
+		$results | Export-Csv -Path $OutputFile1 -NoTypeInformation -Encoding UTF8
+        LogText  "Azure VM Export Completed"
+		
+		# Clear the logged in user session.
+		Clear-AzureProfile -Force
+        
+	    $percent += 1
+	    LogProgress -activity "Azure VM List Export" -Status "Azure VM List Export Completed. Proceed to AzureRM VM" -percentComplete $percent
 
-	} catch{
+
+        ##
+        ## Get AzureRM(ARM) VM details
+        ##
+        
+        $LoginFlag = $false
+
+		## Process the user credentials passed through terminal
+		if ($AzureUserName -and $AzurePassword) {
+			$securePassword = ConvertTo-SecureString $AzurePassword -AsPlainText -Force
+
+			## Convert to Azure account aceptable		
+			$cred = New-Object -TypeName System.Management.Automation.PSCredential ($AzureUserName, $securePassword)
+				
+            $percent = $percent + 2
+			LogProgress -activity "Azure VM List Export" -Status "Add Credentials from Terminal" -percentComplete $percent
+			
+            ## Login the account user has entered
+			$AzureAccount = Add-AzureRmAccount -Credential $cred -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
+            if ($errAddAccount.count -eq 0) {
+                $LoginFlag = $true
+            }
+            else {
+                LogError -errorDescription "An error occured while trying to login into the AzureRM account. Please check your credentials or try again later."
+                exit
+            }
+		}
+		else {
+            $percent = $percent + 2
+			LogProgress -activity "AzureRM VM List Export" -Status "AzureRM Credentials Required" -percentComplete $percent
+			$AzureAccount = Add-AzureRmAccount -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
+            
+            if ($errAddAccount.count -eq 0) {
+                $LoginFlag = $true
+            }
+            else {
+                LogError -errorDescription "An error occured while trying to login into the AzureRM account. Please check your credentials or try again later."
+                exit
+            }
+		}
+	    
+        if($LoginFlag -eq $false) {
+			LogError "Login failed!"
+			Exit		
+		}
+
+		## Get the Subscription List
+        $percent = $percent + 2
+		LogProgress -activity "AzureRM VM List Export" -Status "Credentials accepted, Get ARM Subscription Details" -percentComplete $percent
+		$subscriptions = Get-AzureRmSubscription -EV AzSubscriptionError -EA Stop
+
+		$subscriptionCount = $subscriptions.count
+		$tempValue = [int](40 / $subscriptionCount)
+		$subInterval = [int]($tempValue / 3)
+		
+        $percent = $percent + 1
+		LogProgress -activity "AzureRM VM List Export" -Status "Loop through multiple subscription if any." -percentComplete $percent
+        ## Array for storing csv file details
+        $results = @()
+
+        ## Loop through each subscription
+        foreach ($subscription in $subscriptions) {
+	        $percent += $subInterval
+	        LogProgress -activity "AzureRM VM List Export" -Status "Start data collection for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+
+	        ## Get Subscription basic details
+	        $SubscriptionId = $subscription.SubscriptionId
+	        $SubscriptionName = $subscription.SubscriptionName
+
+		    ## Check if user has access to the subscription
+            try {
+	            ## Set Default Subscription to get all its details
+	            $selectedSub = Select-AzureRmSubscription -SubscriptionId $SubscriptionId
+            }
+            catch {
+		        LogError -errorDescription "The Loggedin user does not has access for ARM subscription - $SubscriptionName ($SubscriptionId)." -color Red
+		        Continue
+            }
+
+	        ## Check if the session is expired
+	        ## Throws an exception if session is expired
+	        try {
+				$percent += $subInterval
+				LogProgress -activity "Azure VM List Collection" -Status "Get ARM VM List for Account Validation for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+				
+		        $vmList = Get-AzureRmVM -EV vmListError -EA SilentlyContinue
+                if ($vmList -eq $null) {
+                    LogText  " The subscription - $SubscriptionName ($SubscriptionId), does not have any ARM VM"
+                    Continue
+                }
+
+		        $vmListtype = $vmList.GetType()
+	        }			
+	        catch {
+		        ## Remove the saved user account credentials, if session has expired
+		        LogError -errorDescription "An error occurred querying VMs for subscription - $SubscriptionName ($SubscriptionId). Credentials may have expired." -color Red
+		        Continue
+	        }
+
+	        ## Interval decided upon previous completion divided by Number of VM's and
+	        ## further divided by 5 main process
+	        $vmCount = $vmList.count
+	        $vmPercentInterval = [int]($subInterval / $vmCount)
+
+	        foreach ($vm in $vmList) { 
+	            $percent += $vmPercentInterval
+	            LogProgress -activity "AzureRM VM List Export" -Status ("Start data collection for ARM VM - " + $vm.Name) -percentComplete $percent
+                
+                $rgn = $vm.ResourceGroupName
+
+                $vmDetails = $subscription | Select -Property SubscriptionId, SubscriptionName
+
+                ## Parse VM OS Profile
+                $ospt = $vm.OSProfile
+				
+                ## Parse VM OS Details
+                $spt = $vm.StorageProfile
+        
+                ## Parse VM Hardware Details
+                $hpt = $vm.HardwareProfile
+              
+                ## Parse VM Network Details
+                $vmNIId = ($vmObj.NetworkInterfaceIDs -split "/")[-1]
+                $vmNI = Get-AzureRmNetworkInterface -Name $vmNIId -ResourceGroupName $rgn
+
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Resource Group Name" -Value $rgn
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Name" -Value $vm.Name
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "License Type" -Value $vm.LicenseType
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Location" -Value $vm.Location
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Availability Set" -Value $vm.AvailabilitySetReference
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Instance Size" -Value $hpt.vmSize
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Admin Username" -Value $ospt.adminUsername
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Provisioning State" -Value $vm.ProvisioningState
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Creation Method" -Value $spt.osDisk.createOption
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Publisher" -Value $spt.imageReference.publisher
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "OS" -Value $spt.imageReference.offer
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Image Name" -Value $spt.imageReference.sku
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Image Version" -Value $spt.imageReference.version
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Private IP Address" -Value $vmNI.IpConfigurations.PrivateIpAddress
+		        $vmDetails | Add-Member -MemberType NoteProperty -Name "VM Private IP Allocation Method" -Value $vmNI.IpConfigurations.PrivateIpAllocationMethod
+
+		        $results += $vmDetails
+	        }
+            			
+        }       
+        
+	    $percent += 2
+	    LogProgress -activity "AzureRM VM List Export" -Status "Start Exporting data to csv file $OutputFile2" -percentComplete $percent
+                
+		$results | Export-Csv -Path $OutputFile2 -NoTypeInformation -Encoding UTF8
+        LogText  "AzureRM VM Export Completed"
+         
+	    $percent = 100
+	    LogProgress -activity "Azure VM List Export" -Status "Completed" -percentComplete $percent                
+		
+	} 
+    catch {
 		LogLastException
 
-        ## Some error occured. Clear the logged in user session.
+        ## An error occured. Clear the logged in user session.
         Clear-AzureProfile -Force
 	}
 }
 
-
-$global:scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-
-# Call the Get-AzureVMSubscriptionDetails Function to 
-#	- Load Account Details
-#	- Export CSV
+## Call the Get-AzureVMSubscriptionDetails Function to 
+##	- Load Account Details
+##	- Export CSV
 
 Get-AzureVMList
