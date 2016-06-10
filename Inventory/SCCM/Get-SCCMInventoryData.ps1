@@ -1,14 +1,12 @@
  ##########################################################################
  #
  # Get-SCCMInventoryData
- # SAM Gold Toolkit
- # Original Source: Sam360, Microsoft SAM Workspace Discovery Tool
  #
  ##########################################################################
 
  Param(
 	[alias("server")]
-	$DatabaseServer = [System.Net.Dns]::GetHostByName(($env:computerName)).HostName,
+	$DatabaseServer = $env:computerName,
 	[alias("database")]
 	$DatabaseName = "CM_P01",
 	[alias("o1")]
@@ -19,6 +17,7 @@
 	$Password,
 	[ValidateSet("AllData","DeviceData","SoftwareData")]
 	$RequiredData = "AllData",
+	$PortNumber = "0",
 	[ValidateSet("2007","2012")]
 	$SCCMVersion = "2012")
 	
@@ -64,10 +63,16 @@ function LogProgress($progressDescription){
 }
 
 function GetConnectionString {
-	$connectionString = "Server= $DatabaseServer; Database= $DatabaseName; "
+	$connectionString = ""
+	if ($PortNumber -ne "0") {
+		$connectionString = "Data Source=$DatabaseServer,$PortNumber;Network Library=DBMSSOCN;Initial Catalog=$DatabaseName; "
+	}
+	else {
+		$connectionString = "Server=$DatabaseServer; Database=$DatabaseName; "
+	}
 	
 	if ($UserName){
-		$connectionString += "User Id= $UserName; Password=$Password;"
+		$connectionString += "User Id=$UserName; Password=$Password;"
 	}
 	else {
 		$connectionString += "Trusted_Connection=True;"
@@ -85,6 +90,8 @@ function Invoke-SQL {
 		Remove-Item $resultsFilePath }
 	$fileWriter = New-Object System.IO.StreamWriter $resultsFilePath
 
+	$connectionString = GetConnectionString
+	"Connection String: $connectionString"
 	$connection = new-object system.data.SqlClient.SQLConnection(GetConnectionString)
 	$command = new-object system.data.sqlclient.sqlcommand($sqlCommand,$connection)
 	$connection.Open()
