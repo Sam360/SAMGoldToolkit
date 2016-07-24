@@ -201,7 +201,7 @@ function Get-ExchangeDetails {
 	LogProgress -Activity "Exchange Data Export" -Status "Logging environment details" -percentComplete 1
 	LogEnvironmentDetails
 
-	if (!($ExchangeServer))
+	if (!($ExchangeServer) -and !($Office365))
 	{
 		$strPrompt = "Exchange Server Name (Default [$($env:computerName)])"
 		$ExchangeServer = Read-Host -Prompt $strPrompt
