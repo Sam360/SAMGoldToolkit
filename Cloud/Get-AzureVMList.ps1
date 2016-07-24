@@ -92,7 +92,9 @@ Param(
 	[alias("o2")]
 	$OutputFile2 = "AzureRMVMList.csv",
 	[alias("log")]
-	[string] $LogFile = "AzureLogFile.txt"
+	[string] $LogFile = "AzureLogFile.txt",
+	[switch]
+	$Verbose
 )
 
 function InitialiseLogFile {
@@ -120,10 +122,6 @@ function LogText {
 function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
 	
 	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-	
-	if ($Verbose){
-		LogText ""
-	}
 
 	$output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
@@ -212,37 +210,35 @@ function Get-AzureVMList {
     $AzureModule = Get-Module -ListAvailable -Name Azure
     
     $percent = $percent + 1
-	LogProgress -activity "Azure VM List - Dependency" -Status "Checking if dependent modules are installed." -percentComplete $percent
+	LogProgress -activity "Azure Data Export" -Status "Configuring Environment" -percentComplete $percent
 	
     if($AzureModule) {
 		## Check in case of existing Azure Installation
 		if ($AzureModule.Version.Major -lt 1) {
 			## Needs to update the Azure Module.
 			$percent = 100
-			LogProgress -activity "Azure VM List - Dependency" -Status "An old version of Azure PowerShell is detected. Please install the latest version of Azure Powershell from (http://aka.ms/webpi-azps) and re-run the script." -percentComplete $percent
+			LogProgress -activity "Azure Data Export" -Status "An old version of Azure PowerShell is detected. Please install the latest version of Azure Powershell from (http://aka.ms/webpi-azps) and re-run the script." -percentComplete $percent
 	
 			exit
 		}
 		
 		$percent = $percent + 1
-		LogProgress -activity "Azure VM List - Dependency" -Status "Loading the Azure Module." -percentComplete $percent
-	
+			
         Import-Module Azure
     }
     else {
 		$WMFVersion = Get-CurrentWMFVersion
 
 		LogText "The required Azure PowerShell components are not installed on this device."
-		LogText "The following components are required and needs to be installed in the specified order"
+		LogText "The following components are required "
 		if ($WMFVersion -lt "3.0") {
 			LogText " * Windows Management Framework 3.0 or greater - https://www.microsoft.com/en-us/download/details.aspx?id=34595"
 		}		
 		LogText " * Microsoft Web Platform Installer with Azure Powershell - http://aka.ms/webpi-azps"
-		LogText " * Azure PowerShell latest version from Microsoft Web Platform Installer if not loaded automatically."
 		LogText ""
 
 		$percent = 100
-		LogProgress -activity "Azure VM List - Dependency" -Status "Please re-run the script once the above mentioned Azure PowerShell dependencies are installed. Script Exiting" -percentComplete $percent
+		LogProgress -activity "Azure Data Export" -Status "Please re-run the script once the above mentioned Azure PowerShell dependencies are installed. Script Exiting" -percentComplete $percent
 	
 		exit
     }
@@ -263,7 +259,7 @@ function Get-AzureVMList {
 			$cred = New-Object -TypeName System.Management.Automation.PSCredential ($AzureUserName, $securePassword)
 			
             $percent = $percent + 2
-			LogProgress -activity "Azure VM List Export" -Status "Processing credentials from command line" -percentComplete $percent
+			LogProgress -activity "Azure Data Export" -Status "Processing credentials from command line" -percentComplete $percent
 
 			## Add the account user has entered
 			$AzureAccount = Add-AzureAccount -Credential $cred -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
@@ -280,7 +276,7 @@ function Get-AzureVMList {
 
 		    if ($loggedAccount.count -eq 0) {
                 $percent = $percent + 2
-			    LogProgress -activity "Azure VM List Export" -Status "Azure Credentials Required" -percentComplete $percent
+			    LogProgress -activity "Azure Data Export" -Status "Azure Classic Credentials Required" -percentComplete $percent
 			    $AzureAccount = Add-AzureAccount -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
 
                 if ($errAddAccount.count -eq 0) {
@@ -305,24 +301,27 @@ function Get-AzureVMList {
 
 		## Get the Subscription List
         $percent = $percent + 2
-		LogProgress -activity "Azure VM List Export" -Status "Credentials accepted, Get Subscription Details" -percentComplete $percent			
+		LogProgress -activity "Azure Data Export" -Status "Getting Subscription Details" -percentComplete $percent			
 		$subscriptions = Get-AzureSubscription -EV AzSubscriptionError -EA Stop
 
 		$subscriptionCount = $subscriptions.count
 		$tempValue = [int](40 / $subscriptionCount)
 		$subInterval = [int]($tempValue / 3)
+
+        if ($Verbose) {
+            LogText "$subscriptionCount subscription(s) found"
+            LogText ($subscriptions | Format-Table -property SubscriptionName, SubscriptionID -autosize | Out-String)
+        }
 		
         $percent = $percent + 1		
-		LogProgress -activity "Azure VM List Export" -Status "Loop through multiple subscription if any." -percentComplete $percent
-
+		
 		## Array for storing csv file details
 		$results = @()
 
 		## Loop through each subscription
 		foreach ($subscription in $subscriptions) {
 	        $percent += $subInterval
-	        LogProgress -activity "AzureRM VM List Export" -Status "Start data collection for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
-
+	        
 	        ## Get Subscription basic details
 			$SubscriptionId = $subscription.SubscriptionId
 			$SubscriptionName = $subscription.SubscriptionName
@@ -341,11 +340,10 @@ function Get-AzureVMList {
 			## Throws an exception if session is expired
 			try {
 				$percent += [int]$subIntervalActivity
-				LogProgress -activity "Azure VM List Collection" -Status "Get VM List for Account Validation for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+				LogProgress -activity "Azure Data Export" -Status "Querying subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
 
 				$vmList = Get-AzureVM -EV vmListError -EA SilentlyContinue
                 if ($vmList -eq $null) {
-                    LogText  " The subscription - $SubscriptionName ($SubscriptionId), does not have any VM"
                     Continue
                 }
 
@@ -355,7 +353,7 @@ function Get-AzureVMList {
 				## Remove the saved user account credentials, if session has expired
 				# Remove-AzureAccount -Name $loggedAccount.Id -Force
 				Clear-AzureProfile -Force
-				LogError -errorDescription "An error occurred querying VMs for subscription $SubscriptionName ($SubscriptionId). Credentials may have expired." -color Red
+				LogError -errorDescription "An error occurred querying VMs for subscription $SubscriptionName ($SubscriptionId). Credentials may have expired."
 				Continue
 			}
 
@@ -365,9 +363,12 @@ function Get-AzureVMList {
 	        $vmPercentInterval = [int]($subInterval / $vmCount)
 
 	        foreach ($vm in $vmList) {
-	            $percent += $vmPercentInterval                
-	            LogProgress -activity "Azure VM List Export" -Status ("Start data collection for VM - " + $vm.Name) -percentComplete $percent
-                 
+	            $percent += $vmPercentInterval  
+
+                if ($Verbose) {
+                    LogText "Querying VM $($vm.Name)"
+                }              
+	            
                 $vmEndpoints = Get-AzureEndpoint -VM $vm
                 if ($vmEndpoints) {
                     foreach ($ed in $vmEndpoints) {
@@ -402,16 +403,14 @@ function Get-AzureVMList {
 		}
         
 	    $percent += 1
-	    LogProgress -activity "AzureRM VM List Export" -Status "Start Exporting data to csv file $OutputFile1" -percentComplete $percent
-
+	    
 		$results | Export-Csv -Path $OutputFile1 -NoTypeInformation -Encoding UTF8
-        LogText  "Azure VM Export Completed"
 		
 		# Clear the logged in user session.
 		Clear-AzureProfile -Force
         
 	    $percent += 1
-	    LogProgress -activity "Azure VM List Export" -Status "Azure VM List Export Completed. Proceed to AzureRM VM" -percentComplete $percent
+	    LogProgress -activity "Azure Data Export" -Status "Azure Classic VM List Export Completed" -percentComplete $percent
 
 
         ##
@@ -428,7 +427,7 @@ function Get-AzureVMList {
 			$cred = New-Object -TypeName System.Management.Automation.PSCredential ($AzureUserName, $securePassword)
 				
             $percent = $percent + 2
-			LogProgress -activity "Azure VM List Export" -Status "Add Credentials from Terminal" -percentComplete $percent
+			LogProgress -activity "Azure Data Export" -Status "Add Credentials from Terminal" -percentComplete $percent
 			
             ## Login the account user has entered
 			$AzureAccount = Add-AzureRmAccount -Credential $cred -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
@@ -442,7 +441,7 @@ function Get-AzureVMList {
 		}
 		else {
             $percent = $percent + 2
-			LogProgress -activity "AzureRM VM List Export" -Status "AzureRM Credentials Required" -percentComplete $percent
+			LogProgress -activity "Azure Data Export" -Status "AzureRM Credentials Required" -percentComplete $percent
 			$AzureAccount = Add-AzureRmAccount -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
             
             if ($errAddAccount.count -eq 0) {
@@ -461,7 +460,7 @@ function Get-AzureVMList {
 
 		## Get the Subscription List
         $percent = $percent + 2
-		LogProgress -activity "AzureRM VM List Export" -Status "Credentials accepted, Get ARM Subscription Details" -percentComplete $percent
+		LogProgress -activity "Azure Data Export" -Status "Credentials accepted, Get ARM Subscription Details" -percentComplete $percent
 		$subscriptions = Get-AzureRmSubscription -EV AzSubscriptionError -EA Stop
 
 		$subscriptionCount = $subscriptions.count
@@ -469,14 +468,14 @@ function Get-AzureVMList {
 		$subInterval = [int]($tempValue / 3)
 		
         $percent = $percent + 1
-		LogProgress -activity "AzureRM VM List Export" -Status "Loop through multiple subscription if any." -percentComplete $percent
+		LogProgress -activity "Azure Data Export" -Status "Loop through multiple subscription if any." -percentComplete $percent
         ## Array for storing csv file details
         $results = @()
 
         ## Loop through each subscription
         foreach ($subscription in $subscriptions) {
 	        $percent += $subInterval
-	        LogProgress -activity "AzureRM VM List Export" -Status "Start data collection for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+	        LogProgress -activity "Azure Data Export" -Status "Start data collection for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
 
 	        ## Get Subscription basic details
 	        $SubscriptionId = $subscription.SubscriptionId
@@ -496,7 +495,7 @@ function Get-AzureVMList {
 	        ## Throws an exception if session is expired
 	        try {
 				$percent += $subInterval
-				LogProgress -activity "Azure VM List Collection" -Status "Get ARM VM List for Account Validation for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+				LogProgress -activity "Azure Data Export" -Status "Get ARM VM List for Account Validation for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
 				
 		        $vmList = Get-AzureRmVM -EV vmListError -EA SilentlyContinue
                 if ($vmList -eq $null) {
@@ -519,7 +518,7 @@ function Get-AzureVMList {
 
 	        foreach ($vm in $vmList) { 
 	            $percent += $vmPercentInterval
-	            LogProgress -activity "AzureRM VM List Export" -Status ("Start data collection for ARM VM - " + $vm.Name) -percentComplete $percent
+	            LogProgress -activity "Azure Data Export" -Status ("Start data collection for ARM VM - " + $vm.Name) -percentComplete $percent
                 
                 $rgn = $vm.ResourceGroupName
 
@@ -560,13 +559,13 @@ function Get-AzureVMList {
         }       
         
 	    $percent += 2
-	    LogProgress -activity "AzureRM VM List Export" -Status "Start Exporting data to csv file $OutputFile2" -percentComplete $percent
+	    LogProgress -activity "Azure Data Export" -Status "Start Exporting data to csv file $OutputFile2" -percentComplete $percent
                 
 		$results | Export-Csv -Path $OutputFile2 -NoTypeInformation -Encoding UTF8
         LogText  "AzureRM VM Export Completed"
          
 	    $percent = 100
-	    LogProgress -activity "Azure VM List Export" -Status "Completed" -percentComplete $percent                
+	    LogProgress -activity "Azure Data Export" -Status "Completed" -percentComplete $percent                
 		
 	} 
     catch {
