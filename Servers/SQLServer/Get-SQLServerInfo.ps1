@@ -9,9 +9,11 @@
 
  Param(
 	[alias("server")]
-	[string[]]$ComputerName = $env:COMPUTERNAME,
+	[string]$ComputerName = $env:COMPUTERNAME,
 	[alias("o1")]
-	$OutputFile1 = "SQLServerInfo.csv")
+	$OutputFile1 = "SQLServerInfo1.csv",
+	[alias("o2")]
+	$OutputFile2 = "SQLServerInfo2.csv")
 
 function LogLastException()
 {
@@ -44,53 +46,7 @@ function LogEnvironmentDetails {
 	Write-Output "Server Parameter:         $ComputerName"
 }
 
-Function Get-SQLServerInfo {  
-    <#
-        .SYNOPSIS
-            Retrieves SQL server information from a local or remote servers.
-
-        .DESCRIPTION
-            Retrieves SQL server information from a local or remote servers. Pulls all 
-            instances from a SQL server and detects if in a cluster or not.
-
-        .PARAMETER Computername
-            Local or remote systems to query for SQL information.
-
-        .NOTES
-            Name: Get-SQLServerInfo
-            Author: Boe Prox
-            DateCreated: 07 SEPT 2013
-
-        .EXAMPLE
-            Get-SQLServerInfo -Computername DC1
-
-            SQLInstance   : MSSQLSERVER
-            Version       : 10.0.1600.22
-            isCluster     : False
-            Computername  : DC1
-            FullName      : DC1
-            isClusterNode : False
-            Edition       : Enterprise Edition
-            ClusterName   : 
-            ClusterNodes  : {}
-            Caption       : SQL Server 2008
-
-            SQLInstance   : MINASTIRITH
-            Version       : 10.0.1600.22
-            isCluster     : False
-            Computername  : DC1
-            FullName      : DC1\MINASTIRITH
-            isClusterNode : False
-            Edition       : Enterprise Edition
-            ClusterName   : 
-            ClusterNodes  : {}
-            Caption       : SQL Server 2008
-
-            Description
-            -----------
-            Retrieves the SQL information from DC1
-    #>
-    [cmdletbinding()] 
+Function Get-SQLServerInfo1 {
     Param (
         [parameter(ValueFromPipeline=$True,ValueFromPipelineByPropertyName=$True)]
         [Alias('__Server','DNSHostName','IPAddress')]
@@ -194,6 +150,25 @@ Function Get-SQLServerInfo {  
     }
 }
 
+Function Get-SQLServerInfo2 {
+    Param (
+        [string]$ComputerName
+    )
+    if (-not(Get-Module -name 'SQLPS')) {
+        if (Get-Module -ListAvailable | Where-Object {$_.Name -eq 'SQLPS' }) {
+            Push-Location
+            Import-Module -Name 'SQLPS' -DisableNameChecking
+            Pop-Location 
+        }
+    }
+
+	$serverInfo = new-object ('Microsoft.SqlServer.Management.Smo.Server') $ComputerName
+	$serverInfo | select Name, Edition, BuildNumber, Product, ProductLevel, Version, Processors, PhysicalMemory, DefaultFile, DefaultLog, MasterDBPath, MasterDBLogPath, BackupDirectory, ServiceAccount, InstanceName, IsClustered
+}
+
 LogEnvironmentDetails
-$SQLInstances = Get-SQLServerInfo -Computername $ComputerName 
-$SQLInstances | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
+$SQLInstances1 = Get-SQLServerInfo1 -Computername $ComputerName 
+$SQLInstances1 | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
+
+$SQLInstances2 = Get-SQLServerInfo2 -Computername $ComputerName 
+$SQLInstances2 | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
