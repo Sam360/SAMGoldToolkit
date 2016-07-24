@@ -1,8 +1,7 @@
 #########################################################
 #                                                                     
-# MsolUserLicenseDetails
+# Get-Office365LicenseDetails.ps1
 # SAM Gold Toolkit
-# Original Source: Akshay Chiddarwar (Sam360)
 #
 #########################################################
 
@@ -55,23 +54,27 @@ ProductLicense_2				Success | PendingActivation | PendingInput
 Param(
 	$Username,
 	$Password,
-	[Parameter(Mandatory=$false)]
-	[bool]$InstallComponentsIfRequired,
+	[switch]
+	$InstallComponentsIfRequired,
 	[alias("o1")]
 	$OutputFile1 = "Office365Licenses.csv",
-	[alias("log")]
-	[string] $LogFile = "Office365QueryLog.txt"
-)
+	[alias("o2")]
+	$OutputFile2 = "Office365LicenseAssignments.csv",
+	[alias("o3")]
+	[string] $LogFile = "Office365QueryLog.txt",
+	[switch]
+	$Verbose)
 
 function LogText {
 	param(
 		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
 		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$NoNewLine = $false  
 	)
 
 	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$NoNewLine
 
 	if ($LogFile) {
 		$Object | Out-File $LogFile -Encoding utf8 -Append 
@@ -87,10 +90,6 @@ function InitialiseLogFile {
 function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
 	
 	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-	
-	if ($Verbose){
-		LogText ""
-	}
 
 	$output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
@@ -129,8 +128,44 @@ function LogLastException() {
 
 	Start-Sleep -s 3
 }
+
+function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){
+	if ($Message) {
+		LogText $Message -color Yellow
+	}
+
+	if ($DefaultValue) {
+		$Prompt += " (Default [$DefaultValue])"
+	}
+
+	$Prompt += ": "
+	LogText $Prompt -color Yellow -NoNewLine
+	$strResult = Read-Host -AsSecureString:$AsSecureString
+
+	if(!$strResult) {
+		$strResult = $DefaultValue
+	}
+
+	return $strResult
+}
+
+function Get-ConsoleCredential([String] $Message, [String] $DefaultUsername)
+{
+	$strUsername = QueryUser -Message $Message -Prompt "Username" -DefaultValue $DefaultUsername
+	if (!$strUsername){
+		return $null
+	}
+
+	$strSecurePassword = QueryUser -Prompt "Password" -AsSecureString
+	if (!$strSecurePassword){
+		return $null
+	}
+
+	return new-object Management.Automation.PSCredential $strUsername, $strSecurePassword
+}
                                                                           
 function LogEnvironmentDetails {
+	LogText -Color Gray " "
 	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
 	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
 	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
@@ -152,6 +187,7 @@ function LogEnvironmentDetails {
 	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
 	LogText -Color Gray "Username Parameter:   $UserName"
 	LogText -Color Gray "Output File 1:        $OutputFile1"
+	LogText -Color Gray "Output File 2:        $OutputFile2"
 	LogText -Color Gray "Log File:             $LogFile"
 	LogText -Color Gray ""
 }
@@ -190,16 +226,14 @@ function Get-InstalledApps {
     Get-ItemProperty $regpath | .{process{if($_.DisplayName -and $_.UninstallString) { $_ } }} | Select DisplayName, Publisher, InstallDate, DisplayVersion, UninstallString |Sort DisplayName
 }
 
-function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msiFileName) {
-		
-	scriptPath = split-path -parent $MyInvocation.MyCommand.Definition
-	
+function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msiFileName, [string]$downloadPath) {
+			
 	# Check if dependency has been installed.
     $InstallCheck = Get-InstalledApps | where {$_.DisplayName -like $InstallName}
 
 	if ($InstallCheck -eq $null) {
     
-		$msifile = $scriptPath + '\' + $msiFileName
+		$msifile = $downloadPath + '\' + $msiFileName
 
 		# Download the required msi
 		$webclient = New-Object System.Net.WebClient
@@ -213,9 +247,7 @@ function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msi
 				msiexec /i $msifile /qn | Out-Null
 			}
 			else {
-				$percent = 100
-				LogProgress -Activity "MSI Verification" -Status "msi file signature verification failed" -percentComplete $percent
-			
+				LogError "MSI verification - msi file signature verification failed"
 				return $false
 			}
 			
@@ -223,17 +255,12 @@ function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msi
             $InstallCheck = Get-InstalledApps | where {$_.DisplayName -like $InstallName}
 			
 			if ($InstallCheck -eq $null) {
-				$percent = 100
-				LogProgress -Activity "Installation Error" -Status "msi could not be installed. Please check if you have admin rights" -percentComplete $percent
-				
+				LogError "Installation error - msi could not be installed. Please check if you have admin rights"
 				return $false
 			}
         }
 		else {
-			$percent = 100
-			LogProgress -Activity "Dependency Download error" -Status "Could not download msi file($InstallName) in the script path" -percentComplete $percent
-			
-            LogError 'A problem occured while downloading the msi file. If problem persist then please manually install the required msi file downloadable from ($msiURL)'            
+			LogError "A problem occured while downloading the msi file. If problem persists, manually install the required msi file ($msiURL)"           
 			return $false
 		}
 	}
@@ -243,130 +270,102 @@ function DependencyInstaller([string]$InstallName, [string]$msiURL, [string]$msi
     return $true
 }
 
-clear 
+function GetScriptPath
+{
+	if($PSCommandPath){
+		return $PSCommandPath; }
+		
+	if($MyInvocation.ScriptName){
+		return $MyInvocation.ScriptName }
+		
+	if($script:MyInvocation.MyCommand.Path){
+		return $script:MyInvocation.MyCommand.Path }
 
-try {
-	InitialiseLogFile
-	LogEnvironmentDetails
-	LogProgress -Activity "Office365 Online services licensing information" -Status "Started" -percentComplete $percent
+    return $script:MyInvocation.MyCommand.Definition
+}
+
+function ConfigureOffice365Environment() {
 	
-	# Variables
-	$percent = 0
+	LogProgress -Activity "Office 365 Data Export" -Status "Configuring Environment" -percentComplete 0
+
+	if (Get-Module -ListAvailable -Name 'MSOnline') {
+		Import-Module MSOnline
+		LogProgress -Activity "Office 365 Data Export" -Status "Modules Loaded" -percentComplete 25
+
+		return $true
+	}
+
+	# Required component(s) not installed
+	if (! $InstallComponentsIfRequired) {
+		LogText 'The required PowerShell Office 365 components are not installed on this device.'
+		LogText 'The following components are required'
+		LogText ' 1) Microsoft Online Services Sign-In Assistant - http://www.microsoft.com/en-us/download/details.aspx?id=41950'
+		LogText ' 2) Windows Azure Active Directory Module for Windows PowerShell (64-bit version) - http://go.microsoft.com/fwlink/p/?linkid=236297'
+		LogText ' '
+		$response = QueryUser -Prompt "Download and install required components (Y/N)"
+
+		if (!($response -eq 'y' -or $response -eq 'Y')) {
+			# User has chosen not to install required component(s)
+			LogError 'Required component(s) missing. Script exiting.'
+			return $false
+		}
+	}
+
+	$scriptPath = GetScriptPath
+	$scriptFolder = split-path -parent $scriptPath
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
 	$OSArch = $OSDetails.OSArchitecture	
-
-	# Get required modules loaded
-	if (Get-Module -ListAvailable -Name 'MSOnline') {
-        Import-Module MSOnline
-		$percent += 8
-		LogProgress -Activity "Required dependency modules" -Status "Modules Loaded" -percentComplete $percent
-	}
-	else {
-    	# Path for MS Online Sign-in Assistant
-    	if ($OSArch -eq '64-bit') {
-    		$AzureAD_msi_url = 'http://go.microsoft.com/fwlink/p/?linkid=236297'
-    		$MsolCLI_msi_url = 'https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_64.msi'
-    	}
-    	else {
-    		$AzureAD_msi_url = 'http://go.microsoft.com/fwlink/p/?linkid=236298'
-            $MsolCLI_msi_url = 'https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_32.msi'
-    	}	
-
-		if ($InstallComponentsIfRequired) {
-			$percent += 2
-			LogProgress -Activity "Required dependency modules" -Status "Download and Installation in progress" -percentComplete $percent
-			
-            # Install MS Online Sign-in Assistant
-            $resInstall = DependencyInstaller -InstallName "Microsoft Online Services Sign-in Assistant" -msiURL $MsolCLI_msi_url -msiFileName "msoidcli.msi"
-			if (! $resInstall) {
-				$percent = 100
-				LogProgress -Activity "Installation Error" -Status "Microsoft Online Services Sign-in Assistant could not be installed. Please check if you have admin rights and try again" -percentComplete $percent
-				
-				exit
-			}
-            
-            # Install MSOnline Administration Module
-            $resInstall = DependencyInstaller -InstallName "Windows Azure Active Directory*" -msiURL $AzureAD_msi_url -msiFileName "AdministrationConfig-en.msi"
-            if (! $resInstall) {
-				$percent = 100
-				LogProgress -Activity "Installation Error" -Status "MSOnline Administration Module could not be installed. Please check if you have admin rights and try again" -percentComplete $percent
-				
-				exit
-			}
-            
-            $percent += 3
-			LogProgress -Activity "Required dependency modules" -Status "Installed. Verification in progress" -percentComplete $percent
-			if (Get-Module -ListAvailable -Name 'MSOnline') {
-				Import-Module MSOnline
-                
-                LogText 'Dependency Installed'
-			}
-			else {
-				$percent = 100
-				LogProgress -Activity "Error occured while installing one of the dependency" -Status "Dependency Installation Error" -percentComplete $percent
-				exit
-			}		
-		}
-		else {
-			LogText 'The required Dependencies are not installed on your machine.'
-			LogText 'You can download and install the dependencies from'
-			LogText 'Microsoft Online Services Sign-In Assistant - http://www.microsoft.com/en-us/download/details.aspx?id=41950'
-			LogText 'Windows Azure Active Directory Module for Windows PowerShell (64-bit version) - http://go.microsoft.com/fwlink/p/?linkid=236297'
-			LogText 'OR'
-			$response = Read-Host 'If you enter (y/Y) SAM360 management point would install the dependencies?'
-
-			if ($response -eq 'y' -or $response -eq 'Y') {
-				$percent += 2
-				LogProgress -Activity "Required dependency modules" -Status "Download and Installation in progress" -percentComplete $percent
-
-                # Install MS Online Sign-in Assistant
-                $resInstall = DependencyInstaller -InstallName "Microsoft Online Services Sign-in Assistant" -msiURL $MsolCLI_msi_url -msiFileName "msoidcli.msi"
-    			if (! $resInstall) {
-    				$percent = 100
-    				LogProgress -Activity "Installation Error" -Status "Microsoft Online Services Sign-in Assistant could not be installed. Please check if you have admin rights and try again" -percentComplete $percent
-    				
-    				exit
-    			}
-                
-                # Install MSOnline Administration Module
-                $resInstall = DependencyInstaller -InstallName "Windows Azure Active Directory*" -msiURL $AzureAD_msi_url -msiFileName "AdministrationConfig-en.msi"
-                if (! $resInstall) {
-    				$percent = 100
-    				LogProgress -Activity "Installation Error" -Status "MSOnline Administration Module could not be installed. Please check if you have admin rights and try again" -percentComplete $percent
-    				
-    				exit
-    			}
-            
-				$percent += 3
-				LogProgress -Activity "Required dependency modules are already installed" -Status "Dependency Installation check" -percentComplete $percent
-				if (Get-Module -ListAvailable -Name 'MSOnline') {
-					Import-Module MSOnline
-				}
-				else {
-					$percent = 100
-					LogProgress -Activity "Error occured while installing one of the dependency" -Status "Dependency Installation Error" -percentComplete $percent
-					exit
-				}
-			}
-			else {
-				$percent = 100
-                LogText 'Please install the dependencies from above mentioned links and re-run the script.'
-                
-				LogProgress -Activity "Required dependency module installation" -Status "User opted manual installation" -percentComplete $percent
-				exit
-			}
-		}
+        
+    # Path for MS Online Sign-in Assistant
+    if ($OSArch -eq '64-bit') {
+    	$AzureAD_msi_url = 'http://go.microsoft.com/fwlink/p/?linkid=236297'
+    	$MsolCLI_msi_url = 'https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_64.msi'
+    }
+    else {
+    	$AzureAD_msi_url = 'http://go.microsoft.com/fwlink/p/?linkid=236298'
+		$MsolCLI_msi_url = 'https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_32.msi'
+    }	
+	
+	# Install MS Online Sign-in Assistant
+	LogProgress -Activity "Office 365 Data Export" -Status "Installing Microsoft Online Services Sign-in Assistant" -percentComplete 5
+	if (! (DependencyInstaller -InstallName "Microsoft Online Services Sign-in Assistant" `
+										-msiURL $MsolCLI_msi_url `
+										-msiFileName "msoidcli.msi" `
+										-downloadPath $scriptFolder)){
+		LogError "Microsoft Online Services Sign-in Assistant could not be installed. Please check if you have admin rights and try again"
+		return $false
 	}
 
-	$percent += 1
-	LogProgress -Activity "Office 365 Data Export" -Status "Office 365 Administrator Credentials Required" -percentComplete 8
+	# Install MSOnline Administration Module
+	LogProgress -Activity "Office 365 Data Export" -Status "Installing Windows Azure Active Directory Component" -percentComplete 15
+	if (! (DependencyInstaller -InstallName "Windows Azure Active Directory*" `
+										-msiURL $AzureAD_msi_url `
+										-msiFileName "AdministrationConfig-en.msi" `
+										-downloadPath $scriptFolder)){
+		LogError  "MSOnline Administration Module could not be installed. Please check if you have admin rights and try again"
+		return $false
+	}
+                                              
+	LogProgress -Activity "Office 365 Data Export" -Status "Loading Module" -percentComplete 20
+	if (! (Get-Module -ListAvailable -Name 'MSOnline')) {
+		LogError "An error occured while installing a required component. Script exiting."
+		return $false
+	}
+
+	Import-Module MSOnline
+	LogProgress -Activity "Office 365 Data Export" -Status "Modules Loaded" -percentComplete 25
+
+	return $true
+}
+
+function ConnectToMsol() {
+	LogProgress -Activity "Office 365 Data Export" -Status "Connecting to Office 365 Server" -percentComplete 30
 
 	# Create the Credentials object if username has been provided
 	if(!($UserName -and $Password)){
-		$credential = Get-Credential
+		$credential = Get-ConsoleCredential -DefaultUsername $UserName -Message "Office 365 Administrator Credentials Required"
 	}
-	else 
-	{
+	else {
 		$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
 		$credential = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
 	}
@@ -374,45 +373,47 @@ try {
 	## Add the account user has entered
 	Connect-MsolService -Credential $credential -ErrorAction SilentlyContinue -ErrorVariable errConn
     
-    if ($errConn -ne $null) {
-        LogError "Authentication - Incorrect login details. Please verify the credentials and try again."
-                
-    	$percent = 100
-    	LogProgress -Activity 'Authentication' -Status 'Incorrect login details. Please verify the credentials and try again.' -percentComplete $percent
-                
-        exit
-    }
-    
-	$percent += 4
-	LogProgress -Activity 'Retrieving Office365 Licensing and User details' -Status 'Get Office365 account details' -percentComplete $percent
+	if ($errConn -ne $null) {
+		LogError "An error occurred connecting to Office 365 online." , $errConn
+		return $false
+	}
+
+	LogProgress -Activity "Office 365 Data Export" -Status "Connected to Office 365 Server" -percentComplete 40
+	return $true
+}
+
+function ExportOffice365Data() {
 
 	# Get a list of all licences that exist within the tenant
-	$OrgLicenseTypes = Get-MsolAccountSku
-
-	# Get list of all the users
-	$users = Get-MsolUser -all | where {$_.isLicensed -eq "True"}
-
+	LogProgress -Activity 'Office 365 Data Export' -Status 'Querying Available Licenses' -percentComplete 45
+	$orgLicenses = Get-MsolAccountSku 
+	
 	try {
-		$test = $users.GetType()
+		$test = $orgLicenses.GetType()
 	}
 	catch {
-		$percent = 100		
-		LogError "Please Connect to Office365 account through terminal or when prompted"
-                    
-		LogProgress -Activity "Login Failed" -Status "User cancelled login operation" -percentComplete $percent
-		exit
+		LogError "An error occurred when retrieving data from Office 365", "Ensure valid credentials were provided"
+		return $false
 	}
+	
+	$orgLicensesInfo = $orgLicenses | Select AccountName, SkuPartNumber, `
+		@{Name="SkuName"; Expression={LookupSkuName($_.SkuPartNumber)}}, SkuId, TargetClass, ActiveUnits, `
+		ConsumedUnits, LockedOutUnits, SuspendedUnits, WarningUnits
+	$orgLicensesInfo | Export-Csv  $OutputFile1 -Encoding UTF8 -NoTypeInformation
 
-	$percent_users = (100 - $percent - 5) / $users.count
-	$percent_lictype = ($percent_users / $OrgLicenseTypes.Count) / 1.5
-    
-    # Store results
-    $result = @()
-    
+	# Get list of all the users
+	LogProgress -Activity 'Office 365 Data Export' -Status 'Querying User List' -percentComplete 55
+	$users = Get-MsolUser -all | where {$_.isLicensed -eq "True"}
+
+	# Get license assignments
+	LogProgress -Activity 'Office 365 Data Export' -Status 'Querying License Assignments' -percentComplete 75
+	$result = @()
 	foreach ($user in $users) {
-		$percent += $percent_lictype
-		LogText "Collect information for User: $($user.displayname)"
 
+		if ($Verbose) {
+			LogText "Querying License Assignments for User: $($user.displayname)"
+		}
+		
 		# Get specific user details
 		$userDetails = $user | Select -Property UserPrincipalName, DisplayName, SignInName, Title, MobilePhone, PhoneNumber, ObjectId, UserType, Department, Office, StreetAddress, City, State, PostalCode, Country, UsageLocation, WhenCreated, LastPasswordChangeTimestamp, PasswordNeverExpires, IsBlackberryUser, LicenseReconciliationNeeded, PreferredLanguage, OverallProvisioningStatus
 	
@@ -425,20 +426,25 @@ try {
 		# Get list of User licenses
 		$userLicenses = $user.Licenses
         
-        $userLicensesSKU = @()
-    	foreach ($license in $userLicenses) {	
-            $userLicensesSKU += $license.AccountSkuId
-	    }
+		$userLicensesSkus = @()
+		$userLicensesSkuIDs = @()
+		$userLicensesSkuNames = @()
+    	foreach ($license in $userLicenses) {
+			$userLicensesSkus += $license.AccountSku.SkuPartNumber	
+			$userLicensesSkuIDs += $license.AccountSkuId
+			$userLicensesSkuNames += LookupSkuName($license.AccountSku.SkuPartNumber);
+		}
+
+		$userDetails | Add-Member -MemberType NoteProperty -Name "LicenseSkus" -Value ($userLicensesSkus -join ";")
+		$userDetails | Add-Member -MemberType NoteProperty -Name "LicenseNames" -Value ($userLicensesSkuNames -join ";")
         
-        if ($userLicensesSKU -ne $null) {
+		if ($userLicensesSkuIDs -ne $null) {
     		# loop through all licenses subscribed by organisation.
-    		foreach ($licenseSKU in $OrgLicenseTypes) {		
-    			$license = $licenseSKU.SkuPartNumber
-    		
-    			$percent += $percent_lictype
+    		foreach ($orgLicense in $orgLicenses) {		
+    			$license = $orgLicense.SkuPartNumber
 
     			# Check if the current license is present in the users license list
-    			if ($userLicensesSKU -contains $licenseSKU.AccountSkuId) {
+    			if ($userLicensesSkuIDs -contains $orgLicense.AccountSkuId) {
     				# Retrieve specific license from users licenses
     				$userLicense = $userLicenses | Where { $_.AccountSku.SkuPartNumber -eq $license }
 
@@ -455,21 +461,182 @@ try {
     			$userDetails | Add-Member -MemberType NoteProperty -Name $license -Value $licenseDetails
     			$licenseDetails = ''
     		}
-        }
+		}
         
-		$percent += $percent_lictype
-        $result += $userDetails
+		$result += $userDetails
 	}
 
 	# Export users details to CSV
-	$result | Export-Csv  $OutputFile1 -Encoding UTF8 -NoTypeInformation
-    
-	$percent = 100
-	LogProgress -Activity "Script Completed" -Status ('Results available in - ' + $OutputFile1) -percentComplete 100
-	Start-Sleep -s 3
+	$result | Export-Csv  $OutputFile2 -Encoding UTF8 -NoTypeInformation
+
+	return $true
 }
 
-catch {		
-    LogLastException
-	exit
+function LookupSkuName ([string] $Sku) {
+	# Return a friendly name for the Office 365 SKU (if available)
+	switch ($Sku) 
+	{
+		"AAD_BASIC" {return "Azure Active Directory Basic"}
+		"AAD_PREMIUM" {return "Azure Active Directory Premium"}
+		"ATP_ENTERPRISE" {return "Exchange Online Advanced Threat Protection"}
+		"BI_AZURE_P1" {return "Power BI Reporting and Analytics"}
+		"BI_AZURE_P2" {return "Power BI Pro"}
+		"CRMINSTANCE" {return "Dynamics CRM Online Additional Production Instance"}
+		"CRMIUR" {return "CRM for Partners"}
+		"CRMPLAN1" {return "Dynamics CRM Online Essential"}
+		"CRMPLAN2" {return "Dynamics CRM Online Basic"}
+		"CRMSTANDARD" {return "CRM Online"}
+		"CRMSTORAGE" {return "Dynamics CRM Online Additional Storage"}
+		"CRMTESTINSTANCE" {return "CRM Test Instance"}
+		"DESKLESSPACK" {return "Office 365 (Plan K1)"}
+		"DESKLESSPACK_GOV" {return "Office 365 (Plan K1) for Government"}
+		"DESKLESSPACK_YAMME" {return "Office 365 (Plan K1) with Yammer"}
+		"DESKLESSWOFFPACK" {return "Office 365 (Plan K2)"}
+		"DESKLESSWOFFPACK_GOV" {return "Office 365 (Plan K2) for Government"}
+		"EMS" {return "Enterprise Mobility Suite"}
+		"ENTERPRISEPACK" {return "Office 365 (Plan E3)"}
+		"ENTERPRISEPACK_B_PILOT" {return "Office 365 (Enterprise Preview)"}
+		"ENTERPRISEPACK_FACULTY" {return "Office 365 (Plan A3) for Faculty"}
+		"ENTERPRISEPACK_GOV" {return "Office 365 (Plan G3) for Government"}
+		"ENTERPRISEPACK_STUDENT" {return "Office 365 (Plan A3) for Students"}
+		"ENTERPRISEPACKLRG" {return "Office 365 (Plan E3)"}
+		"ENTERPRISEPACKWSCAL" {return "Office 365 (Plan E4)"}
+		"ENTERPRISEPREMIUM_NOPSTNCONF" {return "Office 365 (Plan E5) Without PSTN"}
+		"ENTERPRISEWITHSCAL" {return "Office 365 (Plan E4)"}
+		"ENTERPRISEWITHSCAL_FACULTY" {return "Office 365 (Plan A4) for Faculty"}
+		"ENTERPRISEWITHSCAL_GOV" {return "Office 365 (Plan G4) for Government"}
+		"ENTERPRISEWITHSCAL_STUDENT" {return "Office 365 (Plan A4) for Students"}
+		"EOP_ENTERPRISE" {return "Exchange Online Protection"}
+		"EOP_ENTERPRISE_FACULTY" {return "Exchange Online Protection for Faculty"}
+		"EQUIVIO_ANALYTICS" {return "Office 365 Advanced eDiscovery"}
+		"ESKLESSWOFFPACK_GOV" {return "Office 365 (Plan K2) for Government"}
+		"EXCHANGE_ANALYTICS" {return "Delve Analytics"}
+		"EXCHANGE_L_STANDARD" {return "Exchange Online (Plan 1)"}
+		"EXCHANGE_S_ARCHIVE_ADDON_GOV" {return "Exchange Online Archiving for Government"}
+		"EXCHANGE_S_DESKLESS" {return "Exchange Online Kiosk"}
+		"EXCHANGE_S_DESKLESS_GOV" {return "Exchange Kiosk for Government"}
+		"EXCHANGE_S_ENTERPRISE_GOV" {return "Exchange (Plan G2) for Government"}
+		"EXCHANGE_S_STANDARD" {return "Exchange Online (Plan 2)"}
+		"EXCHANGE_S_STANDARD_MIDMARKET" {return "Exchange Online (Plan 1)"}
+		"EXCHANGEARCHIVE" {return "Exchange Online Archiving"}
+		"EXCHANGEARCHIVE_ADDON" {return "Exchange Online Archiving for Exchange Online"}
+		"EXCHANGEDESKLESS" {return "Exchange Online Kiosk"}
+		"EXCHANGEENTERPRISE" {return "Exchange Online (Plan 2)"}
+		"EXCHANGEENTERPRISE_GOV" {return "Office 365 Exchange Online (Plan 2) for Government"}
+		"EXCHANGESTANDARD" {return "Exchange Online (Plan 1)"}
+		"EXCHANGESTANDARD_GOV" {return "Office 365 Exchange Online (Plan 1) for Government"}
+		"EXCHANGESTANDARD_STUDENT" {return "Exchange Online (Plan 1) for Students"}
+		"EXCHANGETELCO" {return "Exchange Online POP"}
+		"INTUNE_A" {return "Intune for Office 365"}
+		"INTUNE_STORAGE" {return "Intune Extra Storage"}
+		"LITEPACK" {return "Office 365 (Plan P1)"}
+		"LITEPACK_P2" {return "Office 365 Small Business Premium"}
+		"LOCKBOX" {return "Customer Lockbox"}
+		"LOCKBOX_ENTERPRISE" {return "Customer Lockbox"}
+		"MCOEV" {return "Skype for Business Cloud PBX"}
+		"MCOIMP" {return "Skype for Business Online (Plan 1)"}
+		"MCOLITE" {return "Skype for Business Online (Plan 1)"}
+		"MCOPLUSCAL" {return "Skype for Business Plus CAL"}
+		"MCOSTANDARD" {return "Skype for Business Online (Plan 2)"}
+		"MCOSTANDARD_GOV" {return "Skype for Business (Plan G2) for Government"}
+		"MCOSTANDARD_MIDMARKET" {return "Skype for Business Online (Plan 1)"}
+		"MCOVOICECONF" {return "Lync Online (Plan 3)"}
+		"MCVOICECONF" {return "Skype for Business Online (Plan 3)"}
+		"MFA_PREMIUM" {return "Azure Multi-Factor Authentication"}
+		"MIDSIZEPACK" {return "Office 365 Midsize Business"}
+		"MS-AZR-0145P" {return "Azure"}
+		"NBPOSTS" {return "Social Engagement Additional 10K Posts"}
+		"NBPROFESSIONALFORCRM" {return "Social Listening Professional"}
+		"O365_BUSINESS" {return "Office 365 Business"}
+		"O365_BUSINESS_ESSENTIALS" {return "Office 365 Business Essentials"}
+		"O365_BUSINESS_PREMIUM" {return "Office 365 Business Premium"}
+		"OFFICE_PRO_PLUS_SUBSCRIPTION_SMBIZ" {return "Office ProPlus"}
+		"OFFICESUBSCRIPTION" {return "Office ProPlus"}
+		"OFFICESUBSCRIPTION_GOV" {return "Office ProPlus for Government"}
+		"OFFICESUBSCRIPTION_STUDENT" {return "Office ProPlus Student Benefit"}
+		"ONEDRIVESTANDARD" {return "OneDrive"}
+		"POWER_BI_PRO" {return "Power BI Pro"}
+		"POWER_BI_STANDALONE" {return "Power BI for Office 365"}
+		"POWER_BI_STANDARD" {return "Power BI Standard"}
+		"PROJECT_CLIENT_SUBSCRIPTION" {return "Project Pro for Office 365"}
+		"PROJECT_ESSENTIALS" {return "Project Lite"}
+		"PROJECTCLIENT" {return "Project Pro for Office 365"}
+		"PROJECTESSENTIALS" {return "Project Lite"}
+		"PROJECTONLINE_PLAN_1" {return "Project Online (Plan 1)"}
+		"PROJECTONLINE_PLAN_2" {return "Project Online (Plan 2)"}
+		"PROJECTONLINE_PLAN1_FACULTY" {return "Project Online for Faculty"}
+		"PROJECTONLINE_PLAN1_STUDENT" {return "Project Online for Students"}
+		"PROJECTWORKMANAGEMENT" {return "Office 365 Planner Preview"}
+		"RIGHTSMANAGEMENT" {return "Azure Rights Management"}
+		"RMS_S_ENTERPRISE" {return "Azure Active Directory Rights Management"}
+		"RMS_S_ENTERPRISE_GOV" {return "Windows Azure Active Directory Rights Management for Government"}
+		"SHAREPOINT_PROJECT_EDU" {return "Project Online for Education"}
+		"SHAREPOINTDESKLESS" {return "SharePoint Online Kiosk"}
+		"SHAREPOINTDESKLESS_GOV" {return "SharePoint Online Kiosk for Government"}
+		"SHAREPOINTENTERPRISE" {return "SharePoint Online (Plan 2)"}
+		"SHAREPOINTENTERPRISE_EDU" {return "SharePoint (Plan 2) for EDU"}
+		"SHAREPOINTENTERPRISE_GOV" {return "SharePoint (Plan G2) for Government"}
+		"SHAREPOINTENTERPRISE_MIDMARKET" {return "SharePoint Online (Plan 1)"}
+		"SHAREPOINTLITE" {return "SharePoint Online (Plan 1)"}
+		"SHAREPOINTPARTNER" {return "SharePoint Online Partner Access"}
+		"SHAREPOINTSTANDARD" {return "SharePoint Online (Plan 1)"}
+		"SHAREPOINTSTORAGE" {return "SharePoint Online Storage"}
+		"SHAREPOINTWAC" {return "Office Online"}
+		"SHAREPOINTWAC_EDU" {return "Office Online for Education"}
+		"SHAREPOINTWAC_GOV" {return "Office Online for Government"}
+		"SQL_IS_SSIM" {return "Power BI Information Services"}
+		"STANDARD_B_PILOT" {return "Office 365 (Small Business Preview)"}
+		"STANDARDPACK" {return "Office 365 (Plan E1)"}
+		"STANDARDPACK_FACULTY" {return "Office 365 (Plan A1) for Faculty"}
+		"STANDARDPACK_GOV" {return "Office 365 (Plan G1) for Government"}
+		"STANDARDPACK_STUDENT" {return "Office 365 (Plan A1) for Students"}
+		"STANDARDWOFFPACK" {return "Office 365 (Plan E2)"}
+		"STANDARDWOFFPACK_FACULTY" {return "Office 365 Education E1 for Faculty"}
+		"STANDARDWOFFPACK_GOV" {return "Office 365 (Plan G2) for Government"}
+		"STANDARDWOFFPACK_IW_FACULTY" {return "Office 365 Education for Faculty"}
+		"STANDARDWOFFPACK_IW_STUDENT" {return "Office 365 Education for Students"}
+		"STANDARDWOFFPACK_STUDENT" {return "Office 365 (Plan A2) for Students"}
+		"STANDARDWOFFPACKPACK_FACULTY" {return "Office 365 (Plan A2) for Faculty"}
+		"STANDARDWOFFPACKPACK_STUDENT" {return "Office 365 (Plan A2) for Students"}
+		"VISIO_CLIENT_SUBSCRIPTION" {return "Visio Pro for Office 365"}
+		"VISIOCLIENT" {return "Visio Pro for Office 365"}
+		"WACONEDRIVEENTERPRISE" {return "OneDrive for Business (Plan 2)"}
+		"WACONEDRIVESTANDARD" {return "OneDrive Pack"}
+		"WACSHAREPOINTENT" {return "Office Web Apps with SharePoint (Plan 2)"}
+		"WACSHAREPOINTSTD" {return "Office Web Apps with SharePoint (Plan 1)"}
+		"YAMMER_ENTERPRISE" {return "Yammer"}
+		"YAMMER_ENTERPRISE_STANDALONE" {return "Yammer Enterprise"}
+		"YAMMER_MIDSIZE" {return "Yammer"}
+	}
+
+	return $Sku
 }
+
+function Get-Office365LicenseDetails() {
+	
+	try {
+		InitialiseLogFile
+		LogEnvironmentDetails
+		
+		if (-not (ConfigureOffice365Environment)) {
+			return;
+		}
+
+		if (-not (ConnectToMsol)) {
+			return;
+		}
+
+		if (-not (ExportOffice365Data)) {
+			return;
+		}
+
+		LogProgress -Activity "Office 365 Data Export" -Status "Export Complete" -percentComplete 100 -Completed $true
+		LogText "Results available in $OutputFile1"
+		Start-Sleep -s 3
+	}
+	catch {		
+		LogLastException
+	}
+} 
+
+Get-Office365LicenseDetails
