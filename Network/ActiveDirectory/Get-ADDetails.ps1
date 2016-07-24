@@ -2,7 +2,6 @@
  # 
  # 	Get-ADDetails
  # 	SAM Gold Toolkit
- #	Original Source: Jon Mulligan (Sam360)
  #
  ##########################################################################
  
