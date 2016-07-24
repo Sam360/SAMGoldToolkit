@@ -401,6 +401,10 @@ function ExportOffice365Data() {
 		ConsumedUnits, LockedOutUnits, SuspendedUnits, WarningUnits
 	$orgLicensesInfo | Export-Csv  $OutputFile1 -Encoding UTF8 -NoTypeInformation
 
+    if ($Verbose) {
+        LogText ($orgLicensesInfo | Format-Table -property SkuName, SkuPartNumber, ActiveUnits, ConsumedUnits -autosize | Out-String)
+    }
+
 	# Get list of all the users
 	LogProgress -Activity 'Office 365 Data Export' -Status 'Querying User List' -percentComplete 55
 	$users = Get-MsolUser -all | where {$_.isLicensed -eq "True"}
@@ -409,10 +413,6 @@ function ExportOffice365Data() {
 	LogProgress -Activity 'Office 365 Data Export' -Status 'Querying License Assignments' -percentComplete 75
 	$result = @()
 	foreach ($user in $users) {
-
-		if ($Verbose) {
-			LogText "Querying License Assignments for User: $($user.displayname)"
-		}
 		
 		# Get specific user details
 		$userDetails = $user | Select -Property UserPrincipalName, DisplayName, SignInName, Title, MobilePhone, PhoneNumber, ObjectId, UserType, Department, Office, StreetAddress, City, State, PostalCode, Country, UsageLocation, WhenCreated, LastPasswordChangeTimestamp, PasswordNeverExpires, IsBlackberryUser, LicenseReconciliationNeeded, PreferredLanguage, OverallProvisioningStatus
