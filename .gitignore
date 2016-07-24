@@ -157,3 +157,14 @@ $RECYCLE.BIN/
 /PsExec.exe
 /Get-SharePointLicenseDetails.ps1
 /Get-ADDetails.ps1
+/Network/ActiveDirectory/ADUsers.csv
+/Network/ActiveDirectory/ADLogFile.txt
+/Network/ActiveDirectory/ADExchangeServers.csv
+/Network/ActiveDirectory/ADDomainTrusts.csv
+/Network/ActiveDirectory/ADDomains.csv
+/Network/ActiveDirectory/ADDomainNETBIOS.csv
+/Network/ActiveDirectory/ADDomainControllers.csv
+/Network/ActiveDirectory/ADDevices.csv
+/Cloud/Office365QueryLog.txt
+/Cloud/Office365Licenses.csv
+/Cloud/Office365LicenseAssignments.csv
