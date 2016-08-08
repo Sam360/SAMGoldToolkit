@@ -1,7 +1,6 @@
  ##########################################################################
  # 
  # 	Get-ADDetails
- # 	SAM Gold Toolkit
  #
  ##########################################################################
  
@@ -11,15 +10,16 @@ Retrieves domain, user, device, server & mobile device data from Active Director
 
 .DESCRIPTION
 The Get-ADDetails script queries the local domain for domain, user, device, server 
-& mobile device data and produces 8 CSV files
+& mobile device data and produces 9 CSV files
 	1)    ADDomains.csv - One record per domain
 	2)    ADDomainTrusts.csv - One record per external trusted domain
 	3)    ADDomainNETBIOS.csv - One record per domain (Includes domain NetBIOS name)
 	4)    ADDomainControllers.csv - One record per domain controller for current domain
 	5)    ADUsers.csv - One record per domain user
 	6)    ADDevices.csv - One record per domain computer
-	7)    ADExchangeServers.csv - One record per Exchange Server
-	8)    ADActiveSyncDevices.csv - One record per Exchange Active Sync Device
+	7)    ADGroups.csv - One record per Group
+	8)    ADExchangeServers.csv - One record per Exchange Server
+	9)    ADActiveSyncDevices.csv - One record per Exchange Active Sync Device
 
     Files are written to current working directory
 
@@ -46,9 +46,11 @@ Get-ADDetails –Verbose
 	[alias("o6")]
 	[string] $OutputFile6 = "ADDevices.csv",
 	[alias("o7")]
-	[string] $OutputFile7 = "ADExchangeServers.csv",
+	[string] $OutputFile7 = "ADGroups.csv",
 	[alias("o8")]
-	[string] $OutputFile8 = "ADActiveSyncDevices.csv",
+	[string] $OutputFile8 = "ADExchangeServers.csv",
+	[alias("o9")]
+	[string] $OutputFile9 = "ADActiveSyncDevices.csv",
 	[alias("log")]
 	[string] $LogFile = "ADLogFile.txt",
 	[alias("r")]
@@ -60,11 +62,12 @@ function LogText {
 	param(
 		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
 		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$NoNewLine = $false 
 	)
 
 	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$NoNewLine
 
 	if ($LogFile) {
 		$Object | Out-File $LogFile -Encoding utf8 -Append 
@@ -77,15 +80,30 @@ function InitialiseLogFile {
 	}
 }
 
-function LogProgress($progressDescription){
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
+	
+	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+	
 	if ($Verbose){
 		LogText ""
 	}
 
 	$output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
-	$output += $progressDescription
+	$output += $Status
 	LogText $output -Color Green
+}
+
+function LogError([string[]]$errorDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
 }
 
 function LogLastException() {
@@ -104,9 +122,12 @@ function LogLastException() {
 
         $currentException = $currentException.InnerException
     }
+
+	Start-Sleep -s 3
 }
 
 function LogEnvironmentDetails {
+	LogText -Color Gray " "
 	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
 	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
 	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
@@ -114,7 +135,7 @@ function LogEnvironmentDetails {
 	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
 	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
 	LogText -Color Gray " "
-	LogText -Color Gray " Get-ADDetails.ps1"
+	LogText -Color Gray "  Get-ADDetails.ps1"
 	LogText -Color Gray " "
 
 	$OSDetails = Get-WmiObject Win32_OperatingSystem
@@ -176,7 +197,7 @@ function SearchAD ($searchFilter, [string[]]$searchAttributes, [switch]$useNamin
 					$_.Value[0] | %{$Ba[$Counter++] = $_}
 					$value = (New-Object System.Security.Principal.SecurityIdentifier($Ba, 0)).Value
 				}
-				elseif ($_.Name -eq "objectguid") {
+				elseif ($_.Name -eq "objectguid" -or $_.Name -eq "msExchMailboxGuid") {
 					$Counter = 0
 					$Ba = New-Object Byte[] $_.Value[0].Length
 					$_.Value[0] | %{$Ba[$Counter++] = $_}
@@ -264,9 +285,17 @@ function GetDomainInfo {
 }
 
 function GetUserInfo {
-	$userAttributes = "sAMAccountName", "objectSid", "objectGUID", "displayName", "departmentNumber", "company", "department", "distinguishedName", "lastLogon", "lastLogonTimestamp", "logonCount", "mail", "telephoneNumber", "physicalDeliveryOfficeName", "description", "whenChanged", "whenCreated", "msExchMailboxGuid"
+	$userAttributes = "sAMAccountName", "objectSid", "objectGUID", "displayName", "departmentNumber", "company", "department", "distinguishedName", "lastLogon", "lastLogonTimestamp", "logonCount", "mail", "telephoneNumber", "physicalDeliveryOfficeName", "description", "whenChanged", "whenCreated", "msExchMailboxGuid","userAccountControl"
 	$userList = SearchAD -searchAttributes $userAttributes -searchFilter "(&(objectCategory=person)(objectClass=user))" 
-	$userList  | export-csv $OutputFile5 -notypeinformation -Encoding UTF8
+	# Add Group Info to user list
+	$userList | % {
+		$groups = ""
+		if ($_.distinguishedName -and $groupMembership.ContainsKey($_.distinguishedName)) {
+			$groups = $groupMembership[$_.distinguishedName] -join ";"
+		}
+		Add-Member -InputObject $_ -MemberType NoteProperty -Name "Groups" -Value $groups
+	}
+	$userList | export-csv $OutputFile5 -notypeinformation -Encoding UTF8
 
 	if ($Verbose){
 		LogText "User Count:                      $($userList.Count)"
@@ -285,6 +314,14 @@ function GetUserInfo {
 function GetDeviceInfo {
 	$deviceAttributes = "name", "objectSid", "objectGUID", "operatingSystem", "operatingSystemVersion", "operatingSystemServicePack", "lastLogon", "lastLogonTimeStamp", "ADsPath", "location", "dNSHostName", "description", "whenChanged", "whenCreated","servicePrincipalName"
 	$deviceList = SearchAD -searchAttributes $deviceAttributes -searchFilter "(objectClass=computer)" 
+	# Add Group Info to device list
+	$deviceList | % {
+		$groups = ""
+		if ($_.distinguishedName -and $groupMembership.ContainsKey($_.distinguishedName)) {
+			$groups = $groupMembership[$_.distinguishedName] -join ";"
+		}
+		Add-Member -InputObject $_ -MemberType NoteProperty -Name "Groups" -Value $groups
+	}
 	$deviceList | export-csv $OutputFile6 -notypeinformation -Encoding UTF8
 
 	if ($Verbose){
@@ -317,31 +354,52 @@ function GetDeviceInfo {
 	}
 }
 
+function GetGroupInfo {
+
+	$groupAttributes = "name", "description", "distinguishedName", "whenChanged", "whenCreated"
+	$groupList = SearchAD -searchAttributes $groupAttributes -searchFilter "(objectClass=group)" 
+	$groupList | %{
+		$groupDN = $_.distinguishedName
+		$objDomain = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$($groupDN)")
+		Add-Member -InputObject $_ -MemberType NoteProperty -Name "Members" -Value ($objDomain.Member -join ";")
+		
+		# Update HashTable of group membership
+		$objDomain.Member | %{
+			if (-not $groupMembership.ContainsKey($_)){
+				$groupMembership[$_] = New-Object System.Collections.ArrayList($null)
+			}
+			$itemCount = $groupMembership[$_].Add($groupDN)
+		}
+	} 
+	$groupList | export-csv $OutputFile7 -notypeinformation -Encoding UTF8
+
+}
+
 function DecodeExchangeEdition([string] $encStr) {
 
     Set-Variable Seed -value 0x49 -option ReadOnly
     Set-Variable Magic -value 0x43 -option ReadOnly
 
-Add-Type -TypeDefinition @"
-    public enum ExchangeEditions
-    {
-        None = -1,
-        Standard = 0x0,
-        Enterprise = 0x1,
-        Evaluation = 0x2,
-        Sample = 0x3,
-        BackOffice = 0x4,
-        Select = 0x5,
-        UpgradedStandard = 0x8,
-        UpgradedEnterprise = 0x9,
-        Coexistence = 0xA,
-        UpgradedCoexistence = 0xB
-    }
+	Add-Type -TypeDefinition @"
+		public enum ExchangeEditions
+		{
+			None = -1,
+			Standard = 0x0,
+			Enterprise = 0x1,
+			Evaluation = 0x2,
+			Sample = 0x3,
+			BackOffice = 0x4,
+			Select = 0x5,
+			UpgradedStandard = 0x8,
+			UpgradedEnterprise = 0x9,
+			Coexistence = 0xA,
+			UpgradedCoexistence = 0xB
+		}
 "@
 
 
     if ([string]::IsNullOrEmpty($encStr)) {
-        Write-Host("Edition string is null. Exiting")
+        LogError("Edition string is null. Exiting DecodeExchangeEdition")
         return -1
     }
 
@@ -359,7 +417,7 @@ Add-Type -TypeDefinition @"
     $strParts = $strDecodedType -split ";"
 
     if($strParts.Count -ne 3) {
-        Write-Host "Array length mismatch. Exiting"
+        LogError "Array length mismatch. Exiting DecodeExchangeEdition"
         return -1
     }
 
@@ -394,13 +452,13 @@ function GetExchangeInfo {
             Add-Member -InputObject $srv -MemberType NoteProperty -Name "ExchangeCurrentRoles" -Value $InstalledRoles
         }
 
-		$exchangeServers | export-csv $OutputFile7 -notypeinformation -Encoding UTF8
+		$exchangeServers | export-csv $OutputFile8 -notypeinformation -Encoding UTF8
 	}
 	
 	$activeSyncDeviceAttributes = "name", "objectGUID", "ADsPath", "description", "whenChanged", "whenCreated","msExchDeviceEASVersion", "msExchDeviceFriendlyName", "msExchDeviceID", "msExchDeviceIMEI", "msExchDeviceMobileOperator", "msExchDeviceModel", "msExchDeviceOS", "msExchDeviceOSLanguage", "msExchDeviceTelephoneNumber", "msExchDeviceType", "msExchLastExchangeChangedTime", "msExchLastUpdateTime"
 	$activeSyncDevices = SearchAD -searchAttributes $activeSyncDeviceAttributes -searchFilter "(objectClass=msExchActiveSyncDevice)"
 	if ($activeSyncDevices) {
-		$activeSyncDevices | export-csv $OutputFile8 -notypeinformation -Encoding UTF8
+		$activeSyncDevices | export-csv $OutputFile9 -notypeinformation -Encoding UTF8
 	}
 	
 	if ($Verbose){
@@ -439,22 +497,26 @@ function CountItems {
 
 function Get-ADDetails {
 	try {
+		$groupMembership = @{}
 		InitialiseLogFile
 		LogEnvironmentDetails
 		
-		LogProgress "Getting Domain Info"
+		LogProgress -Activity "AD Data Export" -Status "Getting Domain Info" -PercentComplete 5
 		GetDomainInfo
-		
-		LogProgress "Getting User Info"
+
+		LogProgress -Activity "AD Data Export" -Status "Getting Group Info" -PercentComplete 10
+		GetGroupInfo
+
+		LogProgress -Activity "AD Data Export" -Status "Getting User Info" -PercentComplete 40
 		GetUserInfo
 		
-		LogProgress "Getting Device Info"
+		LogProgress -Activity "AD Data Export" -Status "Getting Device Info" -PercentComplete 60
 		GetDeviceInfo
 
-		LogProgress "Getting Exchange Info"
+		LogProgress -Activity "AD Data Export" -Status "Getting Exchange Info" -PercentComplete 80
 		GetExchangeInfo
 		
-		LogProgress "Complete"
+		LogProgress -Activity "AD Data Export" -Status "Complete" -PercentComplete 100 -Completed $true
 	}
 	catch {
 		LogLastException
