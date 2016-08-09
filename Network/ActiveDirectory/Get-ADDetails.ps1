@@ -365,10 +365,12 @@ function GetGroupInfo {
         
         # Update HashTable of group membership
         $objDomain.Member | %{
-            if (-not $groupMembership.ContainsKey($_)){
+			if ($_ -ne $null) {
+				if (-not $groupMembership.ContainsKey($_)){
                 $groupMembership[$_] = New-Object System.Collections.ArrayList($null)
-            }
-            $itemCount = $groupMembership[$_].Add($groupDN)
+				}
+				$itemCount = $groupMembership[$_].Add($groupDN)
+			}
         }
     } 
     $groupList | export-csv $OutputFile7 -notypeinformation -Encoding UTF8
