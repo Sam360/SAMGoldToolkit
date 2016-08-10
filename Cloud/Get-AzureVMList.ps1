@@ -197,58 +197,47 @@ function Get-CurrentWMFVersion {
 	return $currVersionStr_WMF
 }
 
-function Get-AzureVMList {	
-	InitialiseLogFile
-	LogEnvironmentDetails
+function VerifyRequiredComponentsAreInstalled {
 
-    $percent = 0	
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	$OSArch = $OSDetails.OSArchitecture	
+	LogProgress -activity "Azure Data Export" -Status "Configuring Environment" -percentComplete 0
 	
-    ## Check if Azure cmdlets are installed.
-    ## Install dependencies if they don't exist.
-    $AzureModule = Get-Module -ListAvailable -Name Azure
-    
-    $percent = $percent + 1
-	LogProgress -activity "Azure Data Export" -Status "Configuring Environment" -percentComplete $percent
-	
-    if($AzureModule) {
-		## Check in case of existing Azure Installation
-		if ($AzureModule.Version.Major -lt 1) {
-			## Needs to update the Azure Module.
-			$percent = 100
-			LogProgress -activity "Azure Data Export" -Status "An old version of Azure PowerShell is detected. Please install the latest version of Azure Powershell from (http://aka.ms/webpi-azps) and re-run the script." -percentComplete $percent
-	
-			exit
-		}
-		
-		$percent = $percent + 1
-			
-        Import-Module Azure
-    }
-    else {
+	## Check if Azure cmdlets are installed.
+	$AzureModule = Get-Module -ListAvailable -Name Azure
+    if($AzureModule -eq $null) {
 		$WMFVersion = Get-CurrentWMFVersion
 
-		LogText "The required Azure PowerShell components are not installed on this device."
-		LogText "The following components are required "
+		LogText "One or more required Azure PowerShell component(s) are not installed on this device."
+		LogText "The following component(s) are required "
 		if ($WMFVersion -lt "3.0") {
 			LogText " * Windows Management Framework 3.0 or greater - https://www.microsoft.com/en-us/download/details.aspx?id=34595"
 		}		
 		LogText " * Microsoft Web Platform Installer with Azure Powershell - http://aka.ms/webpi-azps"
 		LogText ""
 
-		$percent = 100
-		LogProgress -activity "Azure Data Export" -Status "Please re-run the script once the above mentioned Azure PowerShell dependencies are installed. Script Exiting" -percentComplete $percent
+		LogError "Please install the required Azure PowerShell components and re-run this script"
 	
-		exit
-    }
+		return $false
+	}
 
+	## Check if the Azure module is sufficiently recent
+	if ($AzureModule.Version.Major -lt 1) {
+		## Need to update the Azure Module.
+		LogError "An old version of Azure PowerShell is detected. Please install the latest version of Azure Powershell from (http://aka.ms/webpi-azps) and re-run the script." 
+	
+		return $false
+	}
+			
+    Import-Module Azure
+
+	return $true
+}
+
+function Get-AzureVMListClassic {
+	##
+    ## Get Classic Azure VM details
+    ##	
 	try {
-		##
-        ## Get Classic Azure VM details
-        ##
-        $LoginFlag = $false
-        # Clear the logged in user session.
+		$percent = 0
         Clear-AzureProfile -Force
 
 		## Process the user credentials passed through terminal
@@ -259,16 +248,13 @@ function Get-AzureVMList {
 			$cred = New-Object -TypeName System.Management.Automation.PSCredential ($AzureUserName, $securePassword)
 			
             $percent = $percent + 2
-			LogProgress -activity "Azure Data Export" -Status "Processing credentials from command line" -percentComplete $percent
+			LogProgress -activity "Azure Data Export" -Status "Logging in with command line credentials" -percentComplete $percent
 
 			## Add the account user has entered
 			$AzureAccount = Add-AzureAccount -Credential $cred -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
-            if ($errAddAccount.count -eq 0) {
-                $LoginFlag = $true
-            }
-            else {
-                LogError -errorDescription "An error occured while trying to login into the azure account. Please check your credentials or try again later."
-                Exit
+            if ($errAddAccount.count -ne 0) {
+				LogError -errorDescription "An error occured while trying to login into the azure account. Please check your credentials or try again later."
+				return
             }
 		}
 		else {
@@ -279,33 +265,27 @@ function Get-AzureVMList {
 			    LogProgress -activity "Azure Data Export" -Status "Azure Classic Credentials Required" -percentComplete $percent
 			    $AzureAccount = Add-AzureAccount -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
 
-                if ($errAddAccount.count -eq 0) {
-                    $LoginFlag = $true
-                }
-                else {
+                if ($errAddAccount.count -ne 0) {
                     LogError -errorDescription "An error occured while trying to login into the azure account. Please check your credentials or try again later."
-                    Exit
+					return
                 }
 			}            				
 		}
 	    
-        if($LoginFlag) {
-		    ## Check if the account is logged in successfully
-		    $loggedAccount = Get-AzureAccount
-
-		    if ($loggedAccount.count -eq 0) {
-			    LogError "Login failed."
-			    Exit
-		    }					
-		}
+		## Check if the account is logged in successfully
+		$loggedAccount = Get-AzureAccount
+		if ($loggedAccount.count -eq 0) {
+			LogError "Azure (Classic) login failed."
+			return
+		}					
 
 		## Get the Subscription List
         $percent = $percent + 2
-		LogProgress -activity "Azure Data Export" -Status "Getting Subscription Details" -percentComplete $percent			
-		$subscriptions = Get-AzureSubscription -EV AzSubscriptionError -EA Stop
+		LogProgress -activity "Azure Data Export" -Status "Getting Azure Classic Subscription Details" -percentComplete $percent			
+		$subscriptions = Get-AzureSubscription -ErrorVariable AzSubscriptionError -ErrorAction Stop
 
 		$subscriptionCount = $subscriptions.count
-		$tempValue = [int](40 / $subscriptionCount)
+		$tempValue = [int](40 / [math]::max( $subscriptionCount , 1 ))
 		$subInterval = [int]($tempValue / 3)
 
         if ($Verbose) {
@@ -332,7 +312,7 @@ function Get-AzureVMList {
 	            $selectedSub = Select-AzureSubscription -SubscriptionId $SubscriptionId
             }
             catch {
-		        LogError -errorDescription "The Loggedin user does not has access for subscription - $SubscriptionName ($SubscriptionId)." -color Red
+		        LogError -errorDescription "The current user does not has access to subscription - $SubscriptionName ($SubscriptionId)." -color Red
 		        Continue
             }
 
@@ -352,7 +332,6 @@ function Get-AzureVMList {
 			catch {
 				## Remove the saved user account credentials, if session has expired
 				# Remove-AzureAccount -Name $loggedAccount.Id -Force
-				Clear-AzureProfile -Force
 				LogError -errorDescription "An error occurred querying VMs for subscription $SubscriptionName ($SubscriptionId). Credentials may have expired."
 				Continue
 			}
@@ -410,14 +389,26 @@ function Get-AzureVMList {
 		Clear-AzureProfile -Force
         
 	    $percent += 1
-	    LogProgress -activity "Azure Data Export" -Status "Azure Classic VM List Export Completed" -percentComplete $percent
+	    LogProgress -activity "Azure Data Export" -Status "Azure Classic VM List Export Completed" -percentComplete $percent             
+		
+	} 
+    catch {
+		LogLastException
 
+        ## An error occured. Clear the logged in user session.
+        Clear-AzureProfile -Force
+	}
 
-        ##
-        ## Get AzureRM(ARM) VM details
-        ##
-        
-        $LoginFlag = $false
+}
+
+function Get-AzureVMListRM {
+
+	##
+    ## Get AzureRM(ARM) VM details
+    ##
+	try {
+		$percent = 50
+		Clear-AzureProfile -Force
 
 		## Process the user credentials passed through terminal
 		if ($AzureUserName -and $AzurePassword) {
@@ -427,55 +418,48 @@ function Get-AzureVMList {
 			$cred = New-Object -TypeName System.Management.Automation.PSCredential ($AzureUserName, $securePassword)
 				
             $percent = $percent + 2
-			LogProgress -activity "Azure Data Export" -Status "Add Credentials from Terminal" -percentComplete $percent
+			LogProgress -activity "Azure Data Export" -Status "Logging in with command line credentials" -percentComplete $percent
 			
             ## Login the account user has entered
 			$AzureAccount = Add-AzureRmAccount -Credential $cred -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
-            if ($errAddAccount.count -eq 0) {
-                $LoginFlag = $true
-            }
-            else {
+            if ($errAddAccount.count -ne 0) {
                 LogError -errorDescription "An error occured while trying to login into the AzureRM account. Please check your credentials or try again later."
-                exit
+                return
             }
 		}
 		else {
             $percent = $percent + 2
-			LogProgress -activity "Azure Data Export" -Status "AzureRM Credentials Required" -percentComplete $percent
+			LogProgress -activity "Azure Data Export" -Status "Azure RM Credentials Required" -percentComplete $percent
 			$AzureAccount = Add-AzureRmAccount -ErrorAction SilentlyContinue -ErrorVariable errAddAccount
             
-            if ($errAddAccount.count -eq 0) {
-                $LoginFlag = $true
-            }
-            else {
+            if ($errAddAccount.count -ne 0) {
                 LogError -errorDescription "An error occured while trying to login into the AzureRM account. Please check your credentials or try again later."
-                exit
+				return
             }
-		}
-	    
-        if($LoginFlag -eq $false) {
-			LogError "Login failed!"
-			Exit		
 		}
 
 		## Get the Subscription List
         $percent = $percent + 2
-		LogProgress -activity "Azure Data Export" -Status "Credentials accepted, Get ARM Subscription Details" -percentComplete $percent
-		$subscriptions = Get-AzureRmSubscription -EV AzSubscriptionError -EA Stop
+		LogProgress -activity "Azure Data Export" -Status "Credentials accepted, Get Azure RM Subscription Details" -percentComplete $percent
+		$subscriptions = Get-AzureRmSubscription -ErrorVariable AzSubscriptionError -ErrorAction Stop
 
 		$subscriptionCount = $subscriptions.count
-		$tempValue = [int](40 / $subscriptionCount)
+		$tempValue = [int](40 / [math]::max( $subscriptionCount , 1 ))
 		$subInterval = [int]($tempValue / 3)
+
+		if ($Verbose) {
+            LogText "$subscriptionCount subscription(s) found"
+            LogText ($subscriptions | Format-Table -property SubscriptionName, SubscriptionID -autosize | Out-String)
+        }
 		
         $percent = $percent + 1
-		LogProgress -activity "Azure Data Export" -Status "Loop through multiple subscription if any." -percentComplete $percent
+		
         ## Array for storing csv file details
         $results = @()
 
         ## Loop through each subscription
         foreach ($subscription in $subscriptions) {
 	        $percent += $subInterval
-	        LogProgress -activity "Azure Data Export" -Status "Start data collection for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
 
 	        ## Get Subscription basic details
 	        $SubscriptionId = $subscription.SubscriptionId
@@ -487,7 +471,7 @@ function Get-AzureVMList {
 	            $selectedSub = Select-AzureRmSubscription -SubscriptionId $SubscriptionId
             }
             catch {
-		        LogError -errorDescription "The Loggedin user does not has access for ARM subscription - $SubscriptionName ($SubscriptionId)." -color Red
+		        LogError -errorDescription "The current user does not has access to Azure RM subscription - $SubscriptionName ($SubscriptionId)." -color Red
 		        Continue
             }
 
@@ -495,11 +479,10 @@ function Get-AzureVMList {
 	        ## Throws an exception if session is expired
 	        try {
 				$percent += $subInterval
-				LogProgress -activity "Azure Data Export" -Status "Get ARM VM List for Account Validation for subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
-				
+				LogProgress -activity "Azure Data Export" -Status "Querying subscription - $SubscriptionName ($SubscriptionId)" -percentComplete $percent
+
 		        $vmList = Get-AzureRmVM -EV vmListError -EA SilentlyContinue
                 if ($vmList -eq $null) {
-                    LogText  " The subscription - $SubscriptionName ($SubscriptionId), does not have any ARM VM"
                     Continue
                 }
 
@@ -518,8 +501,11 @@ function Get-AzureVMList {
 
 	        foreach ($vm in $vmList) { 
 	            $percent += $vmPercentInterval
-	            LogProgress -activity "Azure Data Export" -Status ("Start data collection for ARM VM - " + $vm.Name) -percentComplete $percent
-                
+	            
+				if ($Verbose) {
+                    LogText "Querying VM $($vm.Name)"
+                }
+
                 $rgn = $vm.ResourceGroupName
 
                 $vmDetails = $subscription | Select -Property SubscriptionId, SubscriptionName
@@ -534,7 +520,7 @@ function Get-AzureVMList {
                 $hpt = $vm.HardwareProfile
               
                 ## Parse VM Network Details
-                $vmNIId = ($vmObj.NetworkInterfaceIDs -split "/")[-1]
+                $vmNIId = ($vm.NetworkInterfaceIDs -split "/")[-1]
                 $vmNI = Get-AzureRmNetworkInterface -Name $vmNIId -ResourceGroupName $rgn
 
 		        $vmDetails | Add-Member -MemberType NoteProperty -Name "Resource Group Name" -Value $rgn
@@ -559,14 +545,15 @@ function Get-AzureVMList {
         }       
         
 	    $percent += 2
-	    LogProgress -activity "Azure Data Export" -Status "Start Exporting data to csv file $OutputFile2" -percentComplete $percent
-                
+	                    
 		$results | Export-Csv -Path $OutputFile2 -NoTypeInformation -Encoding UTF8
-        LogText  "AzureRM VM Export Completed"
+        
+		# Clear the logged in user session.
+		Clear-AzureProfile -Force
          
 	    $percent = 100
-	    LogProgress -activity "Azure Data Export" -Status "Completed" -percentComplete $percent                
-		
+		LogProgress -activity "Azure Data Export" -Status "Azure RM VM List Export Completed" -percentComplete $percent             
+		                
 	} 
     catch {
 		LogLastException
@@ -576,8 +563,17 @@ function Get-AzureVMList {
 	}
 }
 
-## Call the Get-AzureVMSubscriptionDetails Function to 
-##	- Load Account Details
-##	- Export CSV
+
+function Get-AzureVMList {	
+	InitialiseLogFile
+	LogEnvironmentDetails
+
+	if (!(VerifyRequiredComponentsAreInstalled)){
+		return
+	}
+
+	Get-AzureVMListClassic
+	Get-AzureVMListRM
+}
 
 Get-AzureVMList

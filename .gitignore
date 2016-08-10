@@ -168,3 +168,5 @@ $RECYCLE.BIN/
 /Cloud/Office365QueryLog.txt
 /Cloud/Office365Licenses.csv
 /Cloud/Office365LicenseAssignments.csv
+*.csv
+*.txt
