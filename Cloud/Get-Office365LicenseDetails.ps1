@@ -65,36 +65,26 @@ Param(
 	[switch]
 	$Verbose)
 
-function LogText {
-	param(
-		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
-		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
-		[switch]$NoNewLine = $false  
-	)
-
-	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$NoNewLine
-
-	if ($LogFile) {
-		$Object | Out-File $LogFile -Encoding utf8 -Append 
-	}
-}
-
 function InitialiseLogFile {
 	if ($LogFile -and (Test-Path $LogFile)) {
 		Remove-Item $LogFile
 	}
 }
 
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-	
-	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$Color = [System.Console]::ForegroundColor,
+		[switch]$NoNewLine = $false  
+	)
 
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $Status
-	LogText $output -Color Green
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $Color -NoNewline:$NoNewLine
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
 }
 
 function LogError([string[]]$errorDescription){
@@ -127,6 +117,16 @@ function LogLastException() {
     }
 
 	Start-Sleep -s 3
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
+	
+	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $Status
+	LogText $output -Color Green
 }
 
 function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){

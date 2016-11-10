@@ -52,36 +52,26 @@ Param(
 	[switch]
 	$Verbose)
 
-function LogText {
-	param(
-		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
-		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
-	)
-
-	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color
-
-	if ($LogFile) {
-		$Object | Out-File $LogFile -Encoding utf8 -Append 
-	}
-}
-
-function InitialiseLogFile {
+ function InitialiseLogFile {
 	if ($LogFile -and (Test-Path $LogFile)) {
 		Remove-Item $LogFile
 	}
 }
 
-function LogProgress($progressDescription){
-	if ($Verbose){
-		LogText ""
-	}
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$noNewLine = $false 
+	)
 
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $progressDescription
-	LogText $output -Color Green
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
 }
 
 function LogError([string[]]$errorDescription){
@@ -114,6 +104,17 @@ function LogLastException() {
     }
 
 	Start-Sleep -s 3
+}
+
+function LogProgress($progressDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $progressDescription
+	LogText $output -Color Green
 }
                                                                           
 function LogEnvironmentDetails {

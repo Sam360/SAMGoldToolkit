@@ -119,16 +119,6 @@ function LogText {
 	}
 }
 
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-	
-	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $Status
-	LogText $output -Color Green
-}
-
 function LogError([string[]]$errorDescription){
 	if ($Verbose){
 		LogText ""
@@ -159,6 +149,16 @@ function LogLastException() {
     }
 
 	Start-Sleep -s 3
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
+	
+	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $Status
+	LogText $output -Color Green
 }
                                                                           
 function LogEnvironmentDetails {

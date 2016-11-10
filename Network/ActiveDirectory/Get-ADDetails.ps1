@@ -58,6 +58,12 @@ Get-ADDetails –Verbose
     [switch]
     $Verbose)
 
+function InitialiseLogFile {
+    if ($LogFile -and (Test-Path $LogFile)) {
+        Remove-Item $LogFile
+    }
+}
+
 function LogText {
     param(
         [Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
@@ -74,36 +80,16 @@ function LogText {
     }
 }
 
-function InitialiseLogFile {
-    if ($LogFile -and (Test-Path $LogFile)) {
-        Remove-Item $LogFile
-    }
-}
-
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-    
-    Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-    
-    if ($Verbose){
-        LogText ""
-    }
-
-    $output = Get-Date -Format HH:mm:ss.ff
-    $output += " - "
-    $output += $Status
-    LogText $output -Color Green
-}
-
 function LogError([string[]]$errorDescription){
-    if ($Verbose){
-        LogText ""
-    }
+	if ($Verbose){
+		LogText ""
+	}
 
-    $output = Get-Date -Format HH:mm:ss.ff
-    $output += " - "
-    $output += $errorDescription -join "`r`n              "
-    LogText $output -Color Red
-    Start-Sleep -s 3
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
 }
 
 function LogLastException() {
@@ -124,6 +110,20 @@ function LogLastException() {
     }
 
     Start-Sleep -s 3
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
+    
+    Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+    
+    if ($Verbose){
+        LogText ""
+    }
+
+    $output = Get-Date -Format HH:mm:ss.ff
+    $output += " - "
+    $output += $Status
+    LogText $output -Color Green
 }
 
 function LogEnvironmentDetails {
@@ -355,7 +355,6 @@ function GetDeviceInfo {
 }
 
 function GetGroupInfo {
-
     $groupAttributes = "name", "description", "distinguishedName", "whenChanged", "whenCreated"
     $groupList = SearchAD -searchAttributes $groupAttributes -searchFilter "(objectClass=group)" 
     $groupList | %{
@@ -374,7 +373,6 @@ function GetGroupInfo {
         }
     } 
     $groupList | export-csv $OutputFile7 -notypeinformation -Encoding UTF8
-
 }
 
 function DecodeExchangeEdition([string] $encStr) {

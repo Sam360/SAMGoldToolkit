@@ -47,36 +47,38 @@
 	[ValidateSet("DBList","AllData","DeviceData","SoftwareData","BasicData")]
 	$RequiredData = "BasicData")
 
-function LogText {
-	param(
-		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
-		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
-	)
-
-	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color
-
-	if ($LogFile) {
-		$Object | Out-File $LogFile -Encoding utf8 -Append 
-	}
-}
-
 function InitialiseLogFile {
 	if ($LogFile -and (Test-Path $LogFile)) {
 		Remove-Item $LogFile
 	}
 }
 
-function LogProgress($progressDescription){
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$noNewLine = $false 
+	)
+
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
+}
+
+function LogError([string[]]$errorDescription){
 	if ($Verbose){
 		LogText ""
 	}
 
 	$output = Get-Date -Format HH:mm:ss.ff
 	$output += " - "
-	$output += $progressDescription
-	LogText $output -Color Green
+	$output += $errorDescription -join "`r`n              "
+	LogText $output -Color Red
+	Start-Sleep -s 3
 }
 
 function LogLastException() {
@@ -95,6 +97,17 @@ function LogLastException() {
 
         $currentException = $currentException.InnerException
     }
+}
+
+function LogProgress($progressDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $progressDescription
+	LogText $output -Color Green
 }
 
 function LogEnvironmentDetails {
