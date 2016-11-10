@@ -34,8 +34,16 @@ param(
 	[alias("o1")]
 	[string] $OutputFile1 = "LyncUsers.csv",
 	[alias("log")]
-	[string] $LogFile = "LyncLogFile" + $LyncServer + ".txt"
+	[string] $LogFile = "LyncLogFile" + $LyncServer + ".txt",
+    [switch]
+	$Verbose
 )
+
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
+	}
+}
 
 function LogText {
 	param(
@@ -51,26 +59,6 @@ function LogText {
 	if ($LogFile) {
 		$Object | Out-File $LogFile -Encoding utf8 -Append 
 	}
-}
-
-function InitialiseLogFile {
-	if ($LogFile -and (Test-Path $LogFile)) {
-		Remove-Item $LogFile
-	}
-}
-
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-	
-	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-	
-	if ($Verbose){
-		LogText ""
-	}
-
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $Status
-	LogText $output -Color Green
 }
 
 function LogError([string[]]$errorDescription){
@@ -103,6 +91,20 @@ function LogLastException() {
     }
 
 	Start-Sleep -s 3
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
+	
+	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+	
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $Status
+	LogText $output -Color Green
 }
 
 function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){
@@ -177,22 +179,27 @@ function EnvironmentConfigured {
     }
 }
 
-# Standard CAL([bool]$bStdCAL), Enterprise CAL(bEntCAL), Plus CAL(bPlusCAL)
 function CalculateCAL($bUserStatus, $bStdCAL, $bEntCAL, $bPlusCAL) {
     if (! $bUserStatus) {
-        return "NO CAL"
+        return "No CAL"
     }
-    elseif ($bPlusCAL) {
-        return "Plus CAL"
+    elseif ($bEntCAL -and $bPlusCAL) {
+        return "Enterprise Plus CAL"
     }
     elseif ($bEntCAL) {
         return "Enterprise CAL"
     }
+    elseif ($bStdCAL -and $bPlusCAL) {
+        return "Standard Plus CAL"
+    }
     elseif ($bStdCAL) {
         return "Standard CAL"
     }
+    elseif ($bPlusCAL) {
+        return "Plus CAL"
+    }
     else {
-        return "NO CAL"
+        return "No CAL"
     }    
 }
 
@@ -201,6 +208,23 @@ function Get-LyncUsers {
 	LogEnvironmentDetails
 
 	Try {
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
         $bAuthenticate = $false
 		$currConnectionMethod = ""
 
@@ -240,7 +264,7 @@ function Get-LyncUsers {
 			# URI for the LYNC Server
             $uri = "https://" + $LyncServer + "/OcsPowershell"
 			LogProgress -activity "Lync Data Export" -Status "Connecting To Server $uri" -percentComplete 5		
-            $session = New-PSSession -ConnectionURI $uri -Credential $lyncCreds -ErrorAction SilentlyContinue
+            $session = New-PSSession -ConnectionURI $uri -Credential $lyncCreds -ErrorAction Continue
 
             if(-not($session)) {
                 LogError ("The script was unable to connect to Lync server", 
@@ -263,25 +287,31 @@ function Get-LyncUsers {
         if($bAuthenticate) {
 		    LogProgress -activity "Lync Data Export" -Status "Loading Lync users" -percentComplete 12
             $users = Get-CsUser
-    
-			$userCount = $users.count
-			$subInterval = [int](70 / $userCount) / 6
-			$percent = 20
+            if ($Verbose){
+		        LogText "User Count: $($users.count)"
+            }
 		    
             # Load all the policies
             $ConferencePolicies = Get-CsConferencingPolicy
-            $VoicePolicies = Get-CsVoicePolicy          
+            if ($Verbose){
+		        LogText "Conference Policy Count: $($ConferencePolicies.count)"
+            }
+
+            $VoicePolicies = Get-CsVoicePolicy     
+            if ($Verbose){
+		        LogText "Voice Policy Count: $($VoicePolicies.count)"
+            }     
           
             foreach ($user in $users) {
-				LogText "Collecting user data for $($user.UserPrincipalName)"
+                if ($Verbose){
+				    LogText "Collecting user data for $($user.UserPrincipalName)"
+                }
 
                 $bUserStatus = $false
                 $bStdCAL = $false
                 $bEntCAL = $false
                 $bPlusCAL = $false
                 $bVoicePolicy = $false
-    
-				$percent += [int]$subInterval
 				
                 # Check for Standard CAL requirement
                 if ($user.Enabled) {
@@ -290,9 +320,8 @@ function Get-LyncUsers {
                 }
 				
 				# Check for Enterprise CAL requirement
-                if ($user.ConferencingPolicy -ne $null) {                    
-					$percent += [int]$subInterval
-				    
+                if ($user.ConferencingPolicy -ne $null) {
+
 					# Get details of the Conferencing Policy
                     if($currConnectionMethod -eq "SnapIn") {
                         $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy.FriendlyName)}
@@ -323,8 +352,6 @@ function Get-LyncUsers {
                     $user | Add-Member -MemberType NoteProperty -Name AllowUserToScheduleMeetingsWithAppSharing -Value $false
                     $user | Add-Member -MemberType NoteProperty -Name EnableDataCollaboration -Value $false            
                 }
-				
-                $percent += [int]$subInterval
 											
                 # Check for Plus CAL requirement
                 if ($user.EnterpriseVoiceEnabled -eq $true) {
@@ -334,7 +361,6 @@ function Get-LyncUsers {
                 
                 # Check if any Voice Policy exist for the user in Plus CAL
                 if ($user.VoicePolicy -ne $null) {
-					$percent += [int]$subInterval
 								
                     # Get details of the Voice Policy
                     if($currConnectionMethod -eq "SnapIn") {
@@ -367,8 +393,6 @@ function Get-LyncUsers {
                     $user | Add-Member -MemberType NoteProperty -Name EnableBWPolicyOverride -Value $false
                     $user | Add-Member -MemberType NoteProperty -Name PreventPSTNTollBypass -Value $false
                 }
-				
-                $percent += [int]$subInterval
 				
                 $CAL = CalculateCAL $bUserStatus $bStdCAL $bEntCAL $bPlusCAL
 
