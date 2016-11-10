@@ -87,39 +87,26 @@ try
 	[ValidateSet("Both","RemoteSession","SnapIn")] 
 	$ConnectionMethod = "Both")
 
-function LogText {
-	param(
-		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
-		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
-	)
-
-	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color
-
-	if ($LogFile) {
-		$Object | Out-File $LogFile -Encoding utf8 -Append 
-	}
-}
-
 function InitialiseLogFile {
 	if ($LogFile -and (Test-Path $LogFile)) {
 		Remove-Item $LogFile
 	}
 }
 
-function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-	
-	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-	
-	if ($Verbose){
-		LogText ""
-	}
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$noNewLine = $false 
+	)
 
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $Status
-	LogText $output -Color Green
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
 }
 
 function LogError([string[]]$errorDescription){
@@ -152,6 +139,20 @@ function LogLastException() {
     }
 
 	Start-Sleep -s 3
+}
+
+function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
+	
+	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+	
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $Status
+	LogText $output -Color Green
 }
                                                                           
 function LogEnvironmentDetails {
@@ -193,6 +194,21 @@ function EnvironmentConfigured {
 		return $true}
 	else {
 		return $false}
+}
+
+function CountItems {
+    Param(
+    $InputObject)
+
+    if (-not $InputObject){
+        return 0
+    }
+    elseif (Get-Member -inputobject $InputObject -name "Count" -Membertype Properties) {
+        return $InputObject.Count
+    }
+    else {
+        return 1
+    }
 }
 
 function Get-ExchangeDetails {
@@ -305,7 +321,7 @@ function Get-ExchangeDetails {
 	{
 		LogProgress -activity "Exchange Data Export" -Status "Getting server details" -percentComplete 15
 		if (Get-Command "Get-ExchangeServer" -errorAction SilentlyContinue){
-			$exchangeServers = Get-ExchangeServer -Identity $ExchangeServer
+			$exchangeServers = Get-ExchangeServer # -Identity $ExchangeServer
 			$exchangeServers | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
 			if ($Verbose) {
 				LogText "Server Count: $($exchangeServers.Count)"
@@ -323,13 +339,15 @@ function Get-ExchangeDetails {
 		$mailBoxes = Get-Mailbox -ResultSize 'Unlimited'
 		if ($mailBoxes) 
 		{
-			if ($Verbose) {
-				LogText "Mailbox Count: $($mailBoxes.Count)"
+            $mailBoxCount = CountItems($mailBoxes)
+			
+            if ($Verbose) {
+				LogText "Mailbox Count: $mailBoxCount"
 				LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}","Count","UserPrincipalName","LastLogonTime"))
 			}
 
 			$listMailBoxData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
-			$countMailBoxes = 1
+			$mailBoxCounter = 1
 
 			foreach ($mailBox in $mailBoxes) {
 				
@@ -340,18 +358,18 @@ function Get-ExchangeDetails {
 
 				if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")
 				{
-					Write-Progress -activity "Exchange Data Export" -Status "Querying Mailbox Stats $($mailBoxData.UserPrincipalName)" -percentComplete (20 + ($countMailBoxes/$mailBoxes.Count)*40)
+					Write-Progress -activity "Exchange Data Export" -Status "Querying Mailbox Stats $($mailBoxData.UserPrincipalName)" -percentComplete (20 + ($mailBoxCounter/$mailBoxCount)*40)
 					$mailBoxStatistics = $mailBox | Get-MailboxStatistics -WarningAction:silentlycontinue
 					$mailBoxData.LastLogonTime = $mailBoxStatistics.LastLogonTime
 					$mailBoxData.LastLogoffTime = $mailBoxStatistics.LastLogoffTime
 				}
 
 				if ($Verbose) {
-					LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}", $countMailBoxes, $mailBoxData.UserPrincipalName, $mailBoxData.LastLogonTime))
+					LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}", $mailBoxCounter, $mailBoxData.UserPrincipalName, $mailBoxData.LastLogonTime))
 				}
 
 				$listMailBoxData.Add($mailBoxData)
-				$countMailBoxes++
+				$mailBoxCounter++
 			}
 
 			$listMailBoxData | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
@@ -362,13 +380,15 @@ function Get-ExchangeDetails {
 		$activeSyncDevices = Get-ActiveSyncDevice -ResultSize 'Unlimited' -WarningAction:silentlycontinue 
 		if ($activeSyncDevices)
 		{
+            $activeSyncDeviceCount = CountItems($activeSyncDevices)
+
 			if ($Verbose) {
-				LogText "Device Count: $($activeSyncDevices.Count)"
+				LogText "Device Count: $activeSyncDeviceCount"
 				LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}","Count","User","DeviceOS","LastSuccessSync"))
 			}
 
 			$listActiveSyncDeviceData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
-			$countDevices = 1
+			$activeSyncDeviceCounter = 1
 
 			foreach ($activeSyncDevice in $activeSyncDevices) {
 				
@@ -380,7 +400,7 @@ function Get-ExchangeDetails {
 					IsRemoteWipeSupported, DeviceWipeSentTime, DeviceWipeRequestTime, DeviceWipeAckTime
 
 				if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData"){
-					Write-Progress -activity "Exchange Data Export" -Status "Querying Device Stats $($activeSyncDeviceData.FriendlyName)" -percentComplete (60 + ($countDevices/$activeSyncDevices.Count)*38)
+					Write-Progress -activity "Exchange Data Export" -Status "Querying Device Stats $($activeSyncDeviceData.FriendlyName)" -percentComplete (60 + ($activeSyncDeviceCounter/$activeSyncDeviceCount)*38)
 					$activeSyncDeviceStatistics = $activeSyncDevice | Get-ActiveSyncDeviceStatistics -WarningAction:silentlycontinue
 					if ($activeSyncDeviceStatistics){
 						$activeSyncDeviceData.FirstSyncTime = $activeSyncDeviceStatistics.FirstSyncTime
@@ -401,12 +421,12 @@ function Get-ExchangeDetails {
 
 				if ($Verbose) {
 					$activeDeviceUser = GetUserNameFromDeviceID -DeviceID $activeSyncDeviceData.Identity
-					LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $countDevices, $activeDeviceUser,
+					LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $activeSyncDeviceCounter, $activeDeviceUser,
 						$activeSyncDeviceData.DeviceOS, $activeSyncDeviceData.LastSuccessSync))
 				}
 
 				$listActiveSyncDeviceData.Add($activeSyncDeviceData)
-				$countDevices++
+				$activeSyncDeviceCounter++
 			}
 
 			$listActiveSyncDeviceData | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
