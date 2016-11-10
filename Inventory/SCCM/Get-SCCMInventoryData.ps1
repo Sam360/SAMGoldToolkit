@@ -18,6 +18,7 @@
 	[ValidateSet("AllData","DeviceData","SoftwareData")]
 	$RequiredData = "AllData",
 	$PortNumber = "0",
+    $SQLCommandTimeout = 300,
 	[ValidateSet("2007","2012")]
 	$SCCMVersion = "2012")
 	
@@ -94,6 +95,7 @@ function Invoke-SQL {
 	"Connection String: $connectionString"
 	$connection = new-object system.data.SqlClient.SQLConnection(GetConnectionString)
 	$command = new-object system.data.sqlclient.sqlcommand($sqlCommand,$connection)
+    $command.CommandTimeout = $SQLCommandTimeout
 	$connection.Open()
 	
 	$reader = $command.ExecuteReader()
