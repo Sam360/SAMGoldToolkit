@@ -12,19 +12,21 @@
     $SharePointServer,
 	[switch]
 	$Headless = $false,
-    [alias("i1")]
-    $InputADGroupsFile = "ADGroups.csv",
-    [alias("i2")]
-    $InputADUsersFile = "ADUsers.csv",
     [alias("o1")]
     $OutputFile1 = "SharePointSites.csv",
 	[alias("o2")]
-    $OutputFile2 = "SharePointUserGroups.csv",
-	[alias("o3")]
-    $OutputFile3 = "SharePointUserCALs.csv",
+    $OutputFile2 = "CALRequirements.csv",
 	[alias("log")]
-	[string] $LogFile = "SPLogFile.txt"
+	[string] $LogFile = "SPLogFile.txt",
+	[switch]
+	$Verbose = $true
 )
+
+function InitialiseLogFile {
+	if ($LogFile -and (Test-Path $LogFile)) {
+		Remove-Item $LogFile
+	}
+}
 
 function LogText {
 	param(
@@ -40,23 +42,6 @@ function LogText {
 	if ($LogFile) {
 		$Object | Out-File $LogFile -Encoding utf8 -Append 
 	}
-}
-
-function InitialiseLogFile {
-	if ($LogFile -and (Test-Path $LogFile)) {
-		Remove-Item $LogFile
-	}
-}
-
-function LogProgress($progressDescription){
-	if ($Verbose){
-		LogText ""
-	}
-
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $progressDescription
-	LogText $output -Color Green
 }
 
 function LogError([string[]]$errorDescription){
@@ -90,38 +75,16 @@ function LogLastException() {
 
 	Start-Sleep -s 3
 }
-                                                                          
-function LogEnvironmentDetails {
-	LogText -Color Gray " "
-	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
-	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
-	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
-	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
-	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
-	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
-	LogText -Color Gray " "
-	LogText -Color Gray " Get-SharePointLicenseDetails.ps1"
-	LogText -Color Gray " "
 
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	$ScriptPath = GetScriptPath
-	LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
-	LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
-	LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
-	LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
-	LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
-	LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
-	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
-	LogText -Color Gray "Script Path:          $ScriptPath"
-	LogText -Color Gray "Server Parameter:     $SharePointServer"
-	LogText -Color Gray "Output File 1:        $OutputFile1"
-    LogText -Color Gray "Output File 2:        $OutputFile2"
-    LogText -Color Gray "Output File 3:        $OutputFile3"
-    LogText -Color Gray "AD Groups File:       $InputADGroupsFile"
-    LogText -Color Gray "AD Users File:        $InputADUsersFile"
-	LogText -Color Gray "Log File:             $LogFile"
-	LogText -Color Gray ""
+function LogProgress($progressDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $progressDescription
+	LogText $output -Color Green
 }
 
 function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){
@@ -175,6 +138,103 @@ function Get-ConsoleCredential([String] $Message, [String] $DefaultUsername)
     $Creds | Add-Member -MemberType NoteProperty -Name "Password" -Value $strUnsecurePassword
 
 	return $Creds
+}
+                                                                          
+function LogEnvironmentDetails {
+	LogText -Color Gray " "
+	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+	LogText -Color Gray " "
+	LogText -Color Gray " Get-SharePointLicenseDetails.ps1"
+	LogText -Color Gray " "
+
+	$OSDetails = Get-WmiObject Win32_OperatingSystem
+	$ScriptPath = GetScriptPath
+	LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
+	LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+	LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+	LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
+	LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
+	LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+	LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+	LogText -Color Gray "Script Path:          $ScriptPath"
+	LogText -Color Gray "Server Parameter:     $SharePointServer"
+	LogText -Color Gray "Output File 1:        $OutputFile1"
+    LogText -Color Gray "Output File 2:        $OutputFile2"
+	LogText -Color Gray "Log File:             $LogFile"
+    LogText -Color Gray "Verbose:              $Verbose"
+	LogText -Color Gray ""
+}
+
+function SearchAD ($searchFilter, [string[]]$searchAttributes, [switch]$useNamingContext){
+    
+    $searchResults = @()
+    $objSearcher = New-Object System.DirectoryServices.DirectorySearcher
+    
+    if ($useNamingContext){
+        # Connect to the Configuration Naming Context
+        $rootDSE = [ADSI]"LDAP://RootDSE"
+        $configSearchRoot = [ADSI]("LDAP://" + $rootDSE.Get("configurationNamingContext"))
+        $objSearcher.SearchRoot = $configSearchRoot
+    }
+    elseif ($SearchRoot){
+        $objDomain = New-Object System.DirectoryServices.DirectoryEntry($SearchRoot)
+        $objSearcher.SearchRoot = $objDomain
+    }
+    else {
+        $objDomain = New-Object System.DirectoryServices.DirectoryEntry
+        $objSearcher.SearchRoot = $objDomain
+    }
+
+    $objSearcher.PageSize = 1000
+    $objSearcher.Filter = $searchFilter
+    $objSearcher.SearchScope = "Subtree"
+
+    if ($searchAttributes) {
+        ($searchAttributes | %{$objSearcher.PropertiesToLoad.Add($_)}) | out-null
+    }
+    
+    $objSearcher.FindAll() | % {
+        $pso = New-Object PSObject
+        $value = ""
+        $_.Properties.GetEnumerator() | % {
+            try {
+                if ($_.Name -eq "objectsid") {
+                    $Counter = 0
+                    $Ba = New-Object Byte[] $_.Value[0].Length
+                    $_.Value[0] | %{$Ba[$Counter++] = $_}
+                    $value = (New-Object System.Security.Principal.SecurityIdentifier($Ba, 0)).Value
+                }
+                elseif ($_.Name -eq "objectguid" -or $_.Name -eq "msExchMailboxGuid") {
+                    $Counter = 0
+                    $Ba = New-Object Byte[] $_.Value[0].Length
+                    $_.Value[0] | %{$Ba[$Counter++] = $_}
+                    $value = (New-Object System.Guid -ArgumentList @(,$Ba)).ToString()
+                }
+                elseif (($_.Name -eq "lastLogon") -or ($_.Name -eq "lastLogonTimestamp")) {
+                    $value = [DateTime]::FromFileTime($_.Value[0]).ToString('yyyy-MM-dd hh:mm:ss')
+                }
+                elseif ($_.Name -eq "servicePrincipalName"){
+                    $value = $_.Value -join ";"
+                }
+                else {
+                    $value = ($_.Value | foreach {$_})
+                }
+                Add-Member -InputObject $pso -MemberType NoteProperty -Name $_.Name -Value $value
+            }
+            catch {
+                LogLastException
+            }
+        } 
+        $searchResults = $searchResults + $pso
+    }
+
+    return $searchResults | select-object $searchAttributes | Where-Object {$_ -ne $null}
 }
 
 function EnvironmentConfigured {
@@ -335,10 +395,8 @@ function Get-SharePointLicenseDetails {
 			$SharePointServer = QueryUser -Prompt "SharePoint Server" -DefaultValue "$($env:computerName)"
 		}
 		
-		$result = @()
-		
 		if (IsLocalComputer($SharePointServer)) {
-			$result = QuerySharePointInfo
+			QuerySharePointInfo
 		}
 		else{
 			# Execuing SharePoint script over a remote session requires CredSSP authentication option
@@ -378,7 +436,7 @@ function Get-SharePointLicenseDetails {
 				$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
         		$PSCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
 
-				$session = New-PSSession -ComputerName $SharePointServer –Credential $PSCreds -ErrorAction SilentlyContinue -ErrorVariable strConnectionError
+				$session = New-PSSession -ComputerName $SharePointServer ?Credential $PSCreds -ErrorAction SilentlyContinue -ErrorVariable strConnectionError
 			}
 
 			
@@ -424,8 +482,8 @@ function Get-SharePointLicenseDetails {
 			# Copy the results back to this device
 			LogProgress "Collecting output files from $SharePointServer"
 			GetFile -RemoteFilePath "SharePointSites.csv" -LocalFilePath $OutputFile1 -RemoteSession $session
-			GetFile -RemoteFilePath "SharePointUserGroups.csv" -LocalFilePath $OutputFile2 -RemoteSession $session
-			GetFile -RemoteFilePath "SharePointUserCALs.csv" -LocalFilePath $OutputFile3 -RemoteSession $session
+			GetFile -RemoteFilePath "SharePointUserGroups.csv" -LocalFilePath $OutputFile4 -RemoteSession $session
+			GetFile -RemoteFilePath "SharePointUserCALs.csv" -LocalFilePath $OutputFile5 -RemoteSession $session
 			GetFile -RemoteFilePath "SPLogFile.txt" -LocalFilePath "RemoteSPLogFile.txt" -RemoteSession $session
 			
 			Get-Content "RemoteSPLogFile.txt" > $LogFile
@@ -455,9 +513,384 @@ function Get-SharePointLicenseDetails {
     }
 }
 
+function GetGroupInfo {
+    $groupAttributes = "name", "samaccountname", "description", "distinguishedName", "whenChanged", "whenCreated"
+    $groupList = SearchAD -searchAttributes $groupAttributes -searchFilter "(objectClass=group)" 
+    $groupList | %{
+        $groupDN = $_.distinguishedName
+        $objDomain = New-Object System.DirectoryServices.DirectoryEntry("LDAP://$($groupDN)")
+        Add-Member -InputObject $_ -MemberType NoteProperty -Name "Members" -Value ($objDomain.Member -join ";")
+        
+        # Update HashTable of group membership
+        $objDomain.Member | %{
+			if ($_ -ne $null) {
+				if (-not $groupMembership.ContainsKey($_)){
+                $groupMembership[$_] = New-Object System.Collections.ArrayList($null)
+				}
+				$itemCount = $groupMembership[$_].Add($groupDN)
+			}
+        }
+    } 
+    $groupList
+}
+
+function GetUserInfo {
+    $userAttributes = "sAMAccountName", "objectSid", "objectGUID", "displayName", "departmentNumber", "company", "department", "distinguishedName", "lastLogon", "lastLogonTimestamp", "logonCount", "mail", "telephoneNumber", "physicalDeliveryOfficeName", "description", "whenChanged", "whenCreated", "msExchMailboxGuid","userAccountControl"
+    $userList = SearchAD -searchAttributes $userAttributes -searchFilter "(&(objectCategory=person)(objectClass=user))" 
+    # Add Group Info to user list
+    $userList | % {
+        $groups = ""
+        if ($_.distinguishedName -and $groupMembership.ContainsKey($_.distinguishedName)) {
+            $groups = $groupMembership[$_.distinguishedName] -join ";"
+        }
+        Add-Member -InputObject $_ -MemberType NoteProperty -Name "Groups" -Value $groups
+    }
+    $userList
+}
+
+function DecodeSharePointUserName ([string] $SharePointUserName) {
+	# SharePoint names can be decorated with claim type
+	# http://social.technet.microsoft.com/wiki/contents/articles/13921.sharepoint-2013-claims-encoding-also-valuable-for-sharepoint-2010.aspx
+	
+	# "i:0#.w|sam360\jon.mulligan"    (AD User)         => "sam360\jon.mulligan"
+	# "SHAREPOINT\system"             (SharePoint User) => "sharepoint\system"
+	# "i:0#.f|partnerweb|partner_1"   (Forms User)      => "partnerweb->partner_1"
+	$decodedUserName = ""
+	$sharePointUserNameParts = $SharePointUserName -split "\|"
+	if ($sharePointUserNameParts.count -eq 1) {
+	    $decodedUserName = $SharePointUserName
+	}
+	elseif ($sharePointUserNameParts.count -eq 2) {
+	    $decodedUserName = $sharePointUserNameParts[1]
+	}
+	elseif ($sharePointUserNameParts.count -gt 2) {
+	    $decodedUserName = $SharePointUserName # Unknown format
+	}
+	return $decodedUserName.ToLower()
+}
+
+function GetSPWebList {
+
+	$lstAllWebs = @()
+	
+	## Each 'Web Application' contains 1 or more 'Site Collections'
+	## Each 'Site Collection' contains 1 or more 'Sites'
+	## The SharePoint API calls these 'Web Applications', 'Sites' & 'SPWebs' respectively.
+	Get-SPWebApplication | %{
+		$spWebApplication = $_
+		  
+        ## Web Application - What premium features are enabled
+		$waFeatureNames = ""
+		$bWAPremium = $false
+        $waPremiumFeatures = Get-SPFeature "PremiumWebApplication" -WebApplication $spWebApplication -ErrorAction SilentlyContinue -ErrorVariable errGetSPFeature
+        foreach ($wapremiumfeature in $waPremiumFeatures) {
+            $wapremiumfeatureids = $wapremiumfeature.ActivationDependencies | select FeatureId
+            foreach ($fid in $wapremiumfeatureids) {
+                $waFeatureNames += (Get-SPFeature -Id $fid.FeatureId).DisplayName + ", "
+            }
+            $bWAPremium = $true
+        }
+		
+		Get-SPSite -Limit All -WebApplication $spWebApplication | %{
+			$spSite = $_
+			
+            ## Site Collection - What premium features are enabled
+			$scFeatureNames = ""
+			$bSCPremium = $false
+            $scPremiumFeatures = Get-SPFeature "PremiumSite" -Web $spSite.Url -ErrorAction SilentlyContinue
+	        foreach ($scPremiumFeature in $scPremiumFeatures) {
+                $scpremiumfeatureids = $scPremiumFeature.ActivationDependencies | select FeatureId
+                foreach ($fid in $scpremiumfeatureids) {
+                    $scFeatureNames += (Get-SPFeature -Id $fid.FeatureId).DisplayName + ", "
+                }
+                $bSCPremium = $true
+	        }
+			
+			Get-SPWeb -Limit All -Site $spSite | %{
+				$spWeb = $_
+				$siteURL = $spWeb.URL
+				$webUserNames = @()
+				$webSPGroupNames = @()
+				$webADGroupNames = @()
+				
+				if ($Verbose) {
+					LogText "Querying details for site: $siteURL"
+				}
+				
+                ## Site - What premium features are enabled
+				$siteFeatureNames = ""
+				$bSitePremium = $false
+                $sitePremiumFeatures = Get-SPFeature "PremiumWeb" -Web $siteURL -ErrorAction SilentlyContinue
+		        foreach ($sitePremiumFeature in $sitePremiumFeatures) {
+                    $sitepremiumfeatureids = $sitePremiumFeature.ActivationDependencies | select FeatureId
+                    foreach ($fid in $sitepremiumfeatureids) {
+                        $siteFeatureNames += (Get-SPFeature -Id $fid.FeatureId).DisplayName + ", "
+                    }
+                    $bSitePremium = $true
+		        }
+				
+				## Get list of Web users
+                foreach ($webUser in $spWeb.Users) {
+                    ## 'Users' can be AD users or AD groups
+                    if ($webUser.IsDomainGroup) {
+                        $webADGroupNames += $webUser.Name
+						$global:lstAllSPADGroups += $webUser.Name
+                    }
+                    else {
+						$webUserNames += (DecodeSharePointUserName($webUser.UserLogin))
+                    }
+                }
+
+                ## Get list of Web groups
+                foreach ($webSPUserGroup in $spWeb.Groups) {
+                    ## List of groups in site
+                    $webSPGroupNames += $webSPUserGroup.LoginName
+
+                    foreach ($webGrpUser in $webSPUserGroup.Users) {
+                        ## 'Users' can be AD users or AD groups
+                        if ($webGrpUser.IsDomainGroup) {
+                            $webADGroupNames += $webGrpUser.Name
+							$global:lstAllSPADGroups += $webGrpUser.Name
+                        }
+                        else {
+							$webUserNames += (DecodeSharePointUserName($webUser.UserLogin))
+                        }
+                    }
+                }
+				
+				##
+                ## Web Application Details
+                ##
+				$details = New-Object PSObject
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationUrl" -Value $spWebApplication.Url
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationName" -Value $spWebApplication.Name
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationDisplayName" -Value $spWebApplication.DisplayName
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationId" -Value $spWebApplication.Id
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationFarmName" -Value $spWebApplication.Farm
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationStatus" -Value $spWebApplication.Status
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationVersion" -Value $spWebApplication.Version
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationApplicationPoolName" -Value $spWebApplication.ApplicationPool
+
+                ##
+                ## Site Collection Details
+                ##
+                $details | Add-Member -MemberType NoteProperty -Name "SCUrl" -Value $spSite.Url
+                $details | Add-Member -MemberType NoteProperty -Name "SCHostName" -Value $spSite.HostName
+                $details | Add-Member -MemberType NoteProperty -Name "SCID" -Value $spSite.ID	                
+				$details | Add-Member -MemberType NoteProperty -Name "SCArchived" -Value $spSite.Archived
+                $details | Add-Member -MemberType NoteProperty -Name "SCCreation Date" -Value $spSite.CertificationDate
+                $details | Add-Member -MemberType NoteProperty -Name "SCLastContentModifiedDate" -Value $spSite.LastContentModifiedDate
+                $details | Add-Member -MemberType NoteProperty -Name "SCLastSecurityModifiedDate" -Value $spSite.LastSecurityModifiedDate
+            
+                ##
+                ## Site Details
+                ##
+                $details | Add-Member -MemberType NoteProperty -Name "SiteUrl" -Value $spWeb.Url
+                $details | Add-Member -MemberType NoteProperty -Name "SiteTitle" -Value $spWeb.Title
+                $details | Add-Member -MemberType NoteProperty -Name "SiteName" -Value $spWeb.Name
+                $details | Add-Member -MemberType NoteProperty -Name "SiteID" -Value $spWeb.ID
+                $details | Add-Member -MemberType NoteProperty -Name "SiteDescription" -Value $spWeb.Description
+                $details | Add-Member -MemberType NoteProperty -Name "SiteAuthor" -Value (DecodeSharePointUserName($spWeb.Author))
+                $details | Add-Member -MemberType NoteProperty -Name "SiteParentWeb" -Value $spWeb.ParentWeb
+                $details | Add-Member -MemberType NoteProperty -Name "SiteParentWebId" -Value $spWeb.ParentWebId
+                $details | Add-Member -MemberType NoteProperty -Name "SiteIsAppWeb" -Value $spWeb.IsAppWeb
+                $details | Add-Member -MemberType NoteProperty -Name "SiteIsRootWeb" -Value $spWeb.IsRootWeb
+                $details | Add-Member -MemberType NoteProperty -Name "SiteHasUniqueRoleDefinitions" -Value $spWeb.HasUniqueRoleDefinitions
+                $details | Add-Member -MemberType NoteProperty -Name "SiteAllowAnonymousAccess" -Value $spWeb.AllowAnonymousAccess
+                $details | Add-Member -MemberType NoteProperty -Name "SiteWebTemplate" -Value $spWeb.WebTemplate
+                $details | Add-Member -MemberType NoteProperty -Name "SiteUIVersion" -Value $spWeb.UIVersion
+                $details | Add-Member -MemberType NoteProperty -Name "SiteCreation Date" -Value $spWeb.Created
+                $details | Add-Member -MemberType NoteProperty -Name "SiteLastItemModifiedDate" -Value $spWeb.LastItemModifiedDate
+                
+                ##
+				## Premium Features
+				##
+                $details | Add-Member -MemberType NoteProperty -Name "IsPremiumFeatureEnabled" -Value $bSitePremium
+                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationFeatureNames" -Value $waFeatureNames
+                $details | Add-Member -MemberType NoteProperty -Name "SCFeatureNames" -Value $scFeatureNames
+                $details | Add-Member -MemberType NoteProperty -Name "SiteFeatureNames" -Value $siteFeatureNames
+                
+                ##
+				## User & Group access 
+				##
+                $details | Add-Member -MemberType NoteProperty -Name "UsersList" -Value (($webUserNames | select -Unique) -join ";")
+                $details | Add-Member -MemberType NoteProperty -Name "SPGroups" -Value (($webSPGroupNames | select -Unique) -join ";")
+                $details | Add-Member -MemberType NoteProperty -Name "ADGroups" -Value (($webADGroupNames | select -Unique) -join ";")
+                $details | Add-Member -MemberType NoteProperty -Name "UserArray" -Value ($webUserNames | select -Unique)
+                $details | Add-Member -MemberType NoteProperty -Name "ADGroupArray" -Value ($webADGroupNames | select -Unique)
+                
+				
+                ## Populate result array
+                $lstAllWebs += $details
+			}
+		}
+	}
+	$lstAllWebs
+}
+
+function GetNCName([String]$strDN) {
+	$pos = $strDN.ToLower().IndexOf("dc=")
+	if ($pos -gt 0){
+		$strDN = $strDN.Substring($pos)
+	}
+	return $strDN
+}
+
+function GetCN([String]$strDN) {
+	$pos = $strDN.IndexOf("=")
+	if ($pos -gt 0){
+		$strDN = $strDN.Substring($pos+1)
+		$pos = $strDN.IndexOf(",")
+		if ($pos -gt 0){
+			$strDN = $strDN.Substring(0, $pos)
+		}
+	}
+	return $strDN
+}
+
+function ExpandADGroup([string]$strADGroupName) {
+
+	if (-not $htGroupMembers.ContainsKey($strADGroupName)) {
+		## Unable to find Group using Domain\Name format
+		## Try CN format
+		if (-not $htGroupCNs.ContainsKey($strADGroupName)) {
+			LogText "Unable to find AD group '$strADGroupName'" -color red
+			return
+		}
+		else {
+			## CN was found. Lookup Domain\Name
+			$strADGroupName = $htGroupCNs[$strADGroupName]
+		}
+	}
+	
+	if ($htExpandedADGroups.ContainsKey($strADGroupName)) {
+		return $htExpandedADGroups[$strADGroupName]
+	}
+	
+	$allGroupMembers = @()
+	$directGroupMembers = $htGroupMembers[$strADGroupName]
+	foreach ($directGroupMember in $directGroupMembers)
+	{
+		if ($htUserTable.ContainsKey($directGroupMember)) {
+			## The member is a user
+			$allGroupMembers += $htUserTable[$directGroupMember]
+		}
+		elseif ($htGroupDNs.ContainsKey($directGroupMember)) {
+			## The member is a group
+			$allGroupMembers += (ExpandADGroup($htGroupDNs[$directGroupMember]))
+		}
+		elseif ($directGroupMember -eq "Everyone") {
+			## The member is a group
+			$allGroupMembers += "Everyone"
+		}
+		else {
+			LogText "Unable to find AD member '$directGroupMember'" -color red
+		}
+	}
+	
+	if ($Verbose) {
+		LogText "Expanded Group '$strADGroupName' - $($allGroupMembers.count) members"
+	}
+	
+	$global:htExpandedADGroups[$strADGroupName] = $allGroupMembers
+	return $allGroupMembers
+}
+
+function ExpandAllADGroups {
+	## Get domain NetBIOS names
+	$htDomainLookup = @{}
+	$domainNetBIOSDetailsAttributes = "netbiosname", "ncname"
+    $domainNetBIOSDetails = SearchAD -searchFilter "(NetBIOSName=*)" -searchAttributes $domainNetBIOSDetailsAttributes -useNamingContext
+	foreach ($domainNetBIOSDetail in $domainNetBIOSDetails) {
+		$htDomainLookup[$domainNetBIOSDetail.ncname] = $domainNetBIOSDetail.netbiosname
+	}
+
+	## Create a Hashtable map between user DNs and user Domain\Username
+	$htUserTable = @{}
+	foreach ($adUser in $adUserList) {
+		$userDomainName = ""
+		$userDomainNCName = GetNCName($adUser.DistinguishedName)
+		if ($htDomainLookup.ContainsKey($userDomainNCName)){
+			$userDomainName = $htDomainLookup[$userDomainNCName]
+		}
+		else {
+			LogText "Unable to find NetBIOS domain name for user '$($adUser.DistinguishedName)'" -color red
+		}
+
+		$htUserTable[$adUser.DistinguishedName] = "$userDomainName\$($adUser.SAMAccountName)"
+	}
+	
+	## Create 3 Hashtables for looking up groups
+	$htGroupMembers = @{} # Map group Domain\Name to group members
+	$htGroupDNs = @{} # Map group DN to group Domain\Name
+	$htGroupCNs = @{} # Map group CN to group Domain\Name
+	foreach ($adGroup in $adGroupList) {
+		$groupDomainName = ""
+		$groupDomainNCName = GetNCName($adGroup.DistinguishedName)
+		if ($htDomainLookup.ContainsKey($groupDomainNCName)){
+			$groupDomainName = $htDomainLookup[$groupDomainNCName]
+		}
+		else {
+			LogText "Unable to find NetBIOS domain name for group '$($adGroup.DistinguishedName)'" -color red
+		}
+		
+		$groupDomainSAMName = "$groupDomainName\$($adGroup.samaccountname)"
+		$htGroupMembers[$groupDomainSAMName] = $adGroup.Members -split ";"
+		$htGroupDNs[$adGroup.DistinguishedName] = $groupDomainSAMName
+		$htGroupCNs[(GetCN($adGroup.DistinguishedName))] = $groupDomainSAMName
+	}
+	
+	## Special Cases
+	$htGroupMembers["Everyone"] = ,"Everyone"
+	$htGroupMembers["NT AUTHORITY\authenticated users"] = ,"Everyone"
+	#$htGroupDNs["Everyone"] = "Everyone"
+	#$htGroupDNs["NT AUTHORITY\authenticated users"] = "NT AUTHORITY\authenticated users"
+	
+	
+	## Recursively expand the group membership for all groups used in SharePoint
+	foreach ($adGroupName in ($lstAllSPADGroups | select -Unique)) {
+		$groupMembers = ExpandADGroup($adGroupName)
+	}
+}
+
+function GetCALRequirements {
+	$htCALRequirements = @{}
+	foreach ($spWeb in $spWebList) {
+		$bIsPremium = $spWeb.IsPremiumFeatureEnabled
+		
+		$lstWebUsers = @()
+		$lstWebUsers += $spWeb.SiteAuthor
+		$lstWebUsers += $spWeb.UserArray
+		foreach ($adGroup in $spWeb.ADGroupArray){
+			if ($htExpandedADGroups.ContainsKey($adGroup)){
+				$lstWebUsers += $htExpandedADGroups[$adGroup]
+			}
+			else {
+				LogText "Unable to find group '$adGroup' for Site '$($spWeb.SiteUrl)'" -color red
+			}
+		}
+		
+		foreach ($webUser in ($lstWebUsers | select -Unique)) {
+			if ($bIsPremium) {
+				$htCALRequirements[$webUser] = "Premium"
+			}
+			else {
+				if (-not $htCALRequirements.ContainsKey($webUser)){
+					$htCALRequirements[$webUser] = "Standard"
+				}
+			}
+		}
+	}
+	
+	$htCALRequirements.GetEnumerator() |  
+		Select-Object -Property @{n='User';e={$_.Name}}, @{n='CAL';e={$_.Value}} |
+		sort-object User	
+}
+
 function QuerySharePointInfo {
 	try {
         if (!(EnvironmentConfigured)) {
+            LogProgress "Adding SharePoint Snapin"
             Add-PSSnapin Microsoft.Sharepoint.Powershell
 		    if (!(EnvironmentConfigured)) {
 			    LogError "SharePoint Environment could not be configured. Please enter a SharePoint server name and try again"
@@ -465,534 +898,60 @@ function QuerySharePointInfo {
 		    }
 		}
 
-        ## Define variables for user groups export
-        $arrUserGroupDetails = @()
-        $htResultSPUserGroups = @{}
-        $arrSPADGroups = @()
-        $arrResultUserGroups = @()
+        LogProgress "Updating permissionf for user $Username"
+        Get-SPDatabase | Add-SPShellAdmin $Username
+
+		## Global group lists
+		$global:lstAllSPADGroups = @()
+		$global:htExpandedADGroups = @{}
         
-        $resultUserCAL = @()
-        $result = @()
-        
-        $sites = Get-SPWebApplication | Get-SPSite -Limit All | Get-SPWeb -Limit All | select `
-                    @{Name="WebApp"; Expression = {$_.Site.WebApplication}}, `
-                    @{Name="SiteDet"; Expression = {$_.Site}} -Unique
-       
-        foreach ($site in $sites) {
-            
-            $waFeatureNames = ""
-            $scFeatureNames = ""
-
-            $waURL = $site.WebApp.Url
-            $scURL = $site.SiteDet.Url
-            $siteWebs = $site.SiteDet.AllWebs
-            
-            foreach ($siteWeb in $siteWebs) {                
-                
-                $details = New-Object PSObject
-
-                $userGroups = ""
-                $userLogins = ""
-
-                $siteURL = $siteWeb.URL
-                LogText ("Querying details for site - " + $siteURL)
-
-                ##
-                ## Web Application Details
-                ##
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationUrl" -Value $waURL
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationName" -Value $site.WebApp.Name
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationDisplayName" -Value $site.WebApp.DisplayName
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationId" -Value $site.WebApp.Id
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationFarmName" -Value $site.WebApp.Farm
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationStatus" -Value $site.WebApp.Status
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationVersion" -Value $site.WebApp.Version
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationApplicationPoolName" -Value $site.WebApp.ApplicationPool
-
-                ##
-                ## Site Collection Details
-                ##
-                $details | Add-Member -MemberType NoteProperty -Name "SCUrl" -Value $scURL
-                $details | Add-Member -MemberType NoteProperty -Name "SCHostName" -Value $site.SiteDet.HostName
-                $details | Add-Member -MemberType NoteProperty -Name "SCWebApplication" -Value $site.SiteDet.WebApplication
-                $details | Add-Member -MemberType NoteProperty -Name "SCID" -Value $site.SiteDet.ID
-                $details | Add-Member -MemberType NoteProperty -Name "SCSchemaVersion" -Value $site.SiteDet.SchemaVersion
-                $details | Add-Member -MemberType NoteProperty -Name "SCArchived" -Value $site.SiteDet.Archived
-                $details | Add-Member -MemberType NoteProperty -Name "SCCreation Date" -Value $site.SiteDet.CertificationDate
-                $details | Add-Member -MemberType NoteProperty -Name "SCExpirationDate" -Value $site.SiteDet.ExpirationDate
-                $details | Add-Member -MemberType NoteProperty -Name "SCLastContentModifiedDate" -Value $site.SiteDet.LastContentModifiedDate
-                $details | Add-Member -MemberType NoteProperty -Name "SCLastSecurityModifiedDate" -Value $site.SiteDet.LastSecurityModifiedDate
-            
-                ##
-                ## Site Details
-                ##
-                $details | Add-Member -MemberType NoteProperty -Name "SiteUrl" -Value $siteURL
-                $details | Add-Member -MemberType NoteProperty -Name "SiteTitle" -Value $siteWeb.Title
-                $details | Add-Member -MemberType NoteProperty -Name "SiteName" -Value $siteWeb.Name
-                $details | Add-Member -MemberType NoteProperty -Name "SiteID" -Value $siteWeb.ID
-                $details | Add-Member -MemberType NoteProperty -Name "SiteDescription" -Value $siteWeb.Description
-                $details | Add-Member -MemberType NoteProperty -Name "SiteAuthor" -Value $siteWeb.Author
-                $details | Add-Member -MemberType NoteProperty -Name "SiteParentWeb" -Value $siteWeb.ParentWeb
-                $details | Add-Member -MemberType NoteProperty -Name "SiteParentWebId" -Value $siteWeb.ParentWebId
-                $details | Add-Member -MemberType NoteProperty -Name "SiteIsAppWeb" -Value $siteWeb.IsAppWeb
-                $details | Add-Member -MemberType NoteProperty -Name "SiteIsRootWeb" -Value $siteWeb.IsRootWeb
-                $details | Add-Member -MemberType NoteProperty -Name "SiteHasUniqueRoleDefinitions" -Value $siteWeb.HasUniqueRoleDefinitions
-                $details | Add-Member -MemberType NoteProperty -Name "SiteAllowAnonymousAccess" -Value $siteWeb.AllowAnonymousAccess
-                $details | Add-Member -MemberType NoteProperty -Name "SiteWebTemplate" -Value $siteWeb.WebTemplate
-                $details | Add-Member -MemberType NoteProperty -Name "SiteUIVersion" -Value $siteWeb.UIVersion
-                $details | Add-Member -MemberType NoteProperty -Name "SiteCreation Date" -Value $siteWeb.Created
-                $details | Add-Member -MemberType NoteProperty -Name "SiteLastItemModifiedDate" -Value $siteWeb.LastItemModifiedDate
-                
-
-                $bWAPremium = $false
-                $bSCPremium = $false
-                $bSitePremium = $false
-
-                ## Collect Web Application premium features    
-                $waPremiumFeatures = Get-SPFeature "PremiumWebApplication" -WebApplication $waURL -ErrorAction SilentlyContinue -ErrorVariable errGetSPFeature
-                foreach ($wapremiumfeature in $waPremiumFeatures) {
-                    $wapremiumfeatureids = $wapremiumfeature.ActivationDependencies | select FeatureId
-                    
-                    $waFeatureNames = ""
-                    foreach ($fid in $wapremiumfeatureids) {
-                        $waFeatureNames += (Get-SPFeature -Id $fid.FeatureId).DisplayName + ", "
-                    }
-
-                    $bWAPremium = $true
-                }
-
-                ## Collect Site Collection premium features
-                $scPremiumFeatures = Get-SPFeature "PremiumSite" -Web $scURL -ErrorAction SilentlyContinue
-		        foreach ($scPremiumFeature in $scPremiumFeatures) {
-                    $scpremiumfeatureids = $scPremiumFeature.ActivationDependencies | select FeatureId
-                    
-                    $scFeatureNames = ""
-                    foreach ($fid in $scpremiumfeatureids) {
-                        $scFeatureNames += (Get-SPFeature -Id $fid.FeatureId).DisplayName + ", "
-                    }
-
-                    $bSCPremium = $true
-		        }
-
-                ## Collect Site premium features
-                $sitePremiumFeatures = Get-SPFeature "PremiumWeb" -Web $siteURL -ErrorAction SilentlyContinue
-		        foreach ($sitePremiumFeature in $sitePremiumFeatures) {
-                    $sitepremiumfeatureids = $sitePremiumFeature.ActivationDependencies | select FeatureId
-                    
-                    $siteFeatureNames = ""
-                    foreach ($fid in $sitepremiumfeatureids) {
-                        $siteFeatureNames += (Get-SPFeature -Id $fid.FeatureId).DisplayName + ", "
-                    }
-
-                    $bSitePremium = $true
-		        }
-                $details | Add-Member -MemberType NoteProperty -Name "IsPremiumFeatureEnabled" -Value $bSitePremium
-                $details | Add-Member -MemberType NoteProperty -Name "WebApplicationFeatureNames" -Value $waFeatureNames
-                $details | Add-Member -MemberType NoteProperty -Name "SCFeatureNames" -Value $scFeatureNames
-                $details | Add-Member -MemberType NoteProperty -Name "SiteFeatureNames" -Value $siteFeatureNames
-                
-                ## Collect Site users details
-                $users = $siteWeb.Users
-                if ($users) {
-                    $ADUserAsGroupNames = ""
-                    foreach ($user in $users) {
-                        ## Get list of Domain Group from users of SP groups.
-                        if ($user.IsDomainGroup) {
-                            $ADUserAsGroupNames += ($user.Name + ";")
-
-                            ## Add AD group to global array
-                            if ($arrSPADGroups -notcontains $user.Name) {
-                                $arrSPADGroups += $user.Name
-                            }
-                        }
-                        else {
-                            $userLogins += ($user.Name + '[' + $user.UserLogin + ']') + ";"
-                        }
-                    }
-                }
-
-                ## Get list of Site Groups
-                $siteUserGroups = $siteWeb.Groups 
-                foreach ($siteUserGroup in $siteUserGroups) {
-                    ## List of groups in site
-                    $userGroups += ( $siteUserGroup.LoginName + ";" )
-
-                    ## Select specific details from the SP group object
-                    $arrUserGroupDetails = $siteUserGroup | select Name, LoginName, Owner, Description, ParentWeb, DistributionGroupEmail
-
-                    ## Get Group users
-                    $grpusers = $siteUserGroup.Users
-                    $grpUsersList = ""                        
-                    $ADGroupNames = ""
-
-                    foreach ($grpuser in $grpusers) {
-                        ## Get list of Domain Group from users of SP groups.
-                        if ($grpuser.IsDomainGroup) {
-                            ## Add Domain group to array. We add Name as UserLogin has SharePoint reference ID for the group
-                            $ADGroupNames += ($grpuser.Name + ";")
-
-                            ## Add AD group to global array
-                            if ($arrSPADGroups -notcontains $grpuser.Name) {
-                                $arrSPADGroups += $grpuser.Name
-                            }
-                            #$grpADUsersList += $grpuser.UserLogin + "(" + $grpuser.Name + "):ADGroup" + ";"
-                        }
-                        else {
-                            ## We only add the domain name for user and remove the initial reference by SP
-                            $grpUsersList += $grpuser.UserLogin + ";"
-                        }
-                    }
-                    $arrUserGroupDetails | Add-Member -MemberType NoteProperty -Name "ADGroups" -Value $ADGroupNames
-                    $arrUserGroupDetails | Add-Member -MemberType NoteProperty -Name "UsersList" -Value $grpUsersList
-                    
-                    ## Check the SP Groups array
-                    if (!$htResultSPUserGroups.Get_Item($siteUserGroup.LoginName) ) {
-                        $htResultSPUserGroups.Add($siteUserGroup.LoginName, $arrUserGroupDetails)
-                    }
-                }
-
-                ## Add user logins and user groups for the site
-                $details | Add-Member -MemberType NoteProperty -Name "UsersList" -Value $userLogins
-                $details | Add-Member -MemberType NoteProperty -Name "SPGroups" -Value $userGroups
-                $details | Add-Member -MemberType NoteProperty -Name "ADGroups" -Value ($ADUserAsGroupNames + $ADGroupNames)
-                
-                ## Populate result array
-                $result += $details
-            }
-        }
-        
-        ## Export Web Applications detail
-        $result | Export-Csv -Path $OutputFile1 -NoTypeInformation -Encoding UTF8
-        LogText "SharePoint site details exported"
-
         ##
-        ## CAL calculation process begins
-        ##
-
-        ## Check if AD Groups and Users file is specified.
-		if (-not ($InputADGroupsFile -and $InputADUsersFile)) {
-        	LogError "AD Groups File and/or AD Users file was not specified"
-				"User CAL requirements can not be calculated"
-			return
-		}
+        ## Get SPWeb Info
+		##
+		LogProgress "Getting Site Information"
+		$spWebList = GetSPWebList
+        $spWebList | select * -exclude "*Array" |
+			Export-Csv -Path $OutputFile1 -NoTypeInformation -Encoding UTF8
 		
-		if (-not ((Test-Path $InputADGroupsFile) -and (Test-Path $InputADUsersFile))) {
-			# AD data is missing - Run the AD script to collect it
-			RunADScript
-        	
-			if (-not ((Test-Path $InputADGroupsFile) -and (Test-Path $InputADUsersFile))) {
-				# AD data is still missing - Skip the CAL stuff
-				RunADScript
-	        	LogError "AD Groups File and/or AD Users file were not found"
-					"User CAL requirements can not be calculated"
-				return
-			}
-		}
-		      
-        ## Load AD Users and Groups csv file
-        $importedADGroups = Import-Csv $InputADGroupsFile
-        
-        ## Load AD users  csv file
-        $importedADUsers = Import-Csv $InputADUsersFile
-
-        ## Hash table for AD Groups and its users
-        $htADGroups = @{}            
-        
-        ## Groups Hash Table        
-        $htAllGroups = @{}
-        foreach ($importedADGroup in $importedADGroups) {
-            $htAllGroups.Add($importedADGroup.distinguishedname, $importedADGroup)
-        }
-        
-        ## Users Hash Table        
-        $htAllUsers = @{}
-        $requiredCAL = ""
-        foreach ($importedADUser in $importedADUsers) {
-            $htAllUsers.Add($importedADUser.distinguishedname, $requiredCAL)
-        }
-            
-        ## Get details for each AD Group
-        foreach ($ADGroup in $arrSPADGroups) {
-            $arrGroupUserList = @()
-
-            if ($ADGroup -ne "Everyone" -and $ADGroup -ne "NT AUTHORITY\authenticated users") {
-                ## Process AD groups that are used in SP
-                $userGrpSplit = $ADGroup -split "\\"
-                $getADGroupByName = $importedADGroups | where { (($_.distinguishedname -split ",").ToLower() -like ("*" + $userGrpSplit[1])) }
-                $grpName = $getADGroupByName.Name
-                            
-                ## Groups - Everyone or NT system are classified as AD groups since they are all authenticated users
-                ## $grpName will hold only values for actual AD groups
-                ## If the group name is Everyone or NT system then they will be ignored
-                if ($grpName) {
-                    ## Get all the users within the group
-                    $grpMembers = $getADGroupByName.Members -split ";"
-
-                    ## Check if any of the user is a AD Group
-                    foreach ($grpMember in $grpMembers) {
-                        $htChildGroupLists = @{}
-                    
-                        ## Check if the user is a group
-                        $grpParent = $importedADGroups | where { $_.distinguishedname -like $grpMember }
-                        if ($grpParent) {
-                            ## The user is a group
-                            $htChildGroupLists.Add($grpParent.name, $grpParent.distinguishedname)
-                        }
-                        else {
-                            ## Add the user
-                            $arrGroupUserList += $grpMember
-                        }
-
-                        while ($htChildGroupLists.count -ne 0) {
-                            ## 
-                            $htChildGroups = @{}
-                            foreach ($arrChildGroupList in $htChildGroupLists.GetEnumerator()) {
-                            
-                                ## Get the Child group details
-                                $hashKey = $arrChildGroupList.Key
-                                $hashValue = $arrChildGroupList.Value
-
-                                ## Check if the user is a group
-                                $grpChild = $importedADGroups | where { $_.distinguishedname -like $hashValue }
-                                $grpChildMembers = $grpChild.Members -split ";"
-
-                                foreach($grpChildMember in $grpChildMembers) {  
-                                    ## Check if the user is a group
-                                    $grpParent = $importedADGroups | where { $_.distinguishedname -like $grpChildMember }                                  
-                                    if ($grpParent) {
-                                        ## The user is a group
-                                        $htChildGroups.Add($grpParent.name, $grpParent.distinguishedname)
-                                    }
-                                    else {
-                                        ## Add the user
-                                        $arrGroupUserList += $grpChildMember
-                                    }
-                                }
-                            }
-
-                            ## Remove old groups from the list and replace with the child groups to avoid looping for same group
-                            $htChildGroupLists = $htChildGroups
-                        }
-                    }
-
-                    ## Add the group and it's members to the array
-                    $htADGroups.Add($grpName, $arrGroupUserList)                    
-                }
-            }
-        } ## End-of-loop
-
-        ## Iterate all SharePoint group(s) to merge AD group(s) user(s) with SP user(s)
-        $htAllGroups = @{}
-    
-        ## Convert Hashes to ArrayList
-        foreach ($htResultSPUserGroup in $htResultSPUserGroups.GetEnumerator()) {
-            $arrADGroupUsers = @()
-
-            ## Get details of current group
-            $grpDetails = $htResultSPUserGroup.Value
-
-            ## Check if the group has an AD Group
-            if ($grpDetails.ADGroups) {                
-                $arrADGroups = $grpDetails.ADGroups -split ";"
-
-                foreach ($grpAD in ($arrADGroups -split "\\")[1]) {
-                    $arrADGroupUsers += $htADGroups.GetEnumerator() | where {$_.Key -eq $grpAD}
-                }
-            }
-            
-            ## Find the Distinguished username for the user directly referencing in SP
-            $usersList = $htResultSPUserGroup.Value.UsersList -split ";"
-                    
-            foreach ($user in $usersList) {
-                if ($user -ne "" -and $user -ne "SHAREPOINT\System") {
-                    $userSplit = ($user.Split("|")[1]) -split "\\"
-                            
-                    ## Process AD users that are used in SP
-                    $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
-                    if ($arrADGroupUsers -notcontains $getADUserByName.distinguishedname) {
-                        $arrADGroupUsers += $getADUserByName.distinguishedname
-                    }
-                }
-            }
-            
-            $htResultSPUserGroup.Value.UsersList = ($arrADGroupUsers -join ";")
-
-            ## Add the values to All Groups Hash table
-            $htAllGroups.Add($htResultSPUserGroup.Key, $htResultSPUserGroup.Value)
-
-            ## Default Action - Add the users to the list as array            
-            ## Array for Exporting SP Groups
-            $arrResultUserGroups += $htResultSPUserGroup.Value            
-        }
-        
-        ## Export all user groups
-        $arrResultUserGroups | Export-Csv -Path $OutputFile2 -NoTypeInformation -Encoding UTF8
-	    LogText "User Groups Exported"
+		##
+		## Get AD Group Info
+		##
+		LogProgress "Getting AD Group Information"
+		$groupMembership = @{}
+		$adGroupList = GetGroupInfo
+		#$adGroupList | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
+		
+		##
+		## Get AD User Info
+		##
+		LogProgress "Getting AD User Information"
+		$adUserList = GetUserInfo
+		#$adUserList | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
 
         ##
-        ## Calculate CAL
+        ## Expand all groups
         ##
+		LogProgress "Compiling group memberships"
+		ExpandAllADGroups
+		
+		##
+		## Calculate CAL requirements
+		##
+        LogProgress "Calculating user CAL requirements"
+		$userCALRequirements = GetCALRequirements
+		$userCALRequirements | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
 
-        ## Iterate through sites 
-        foreach ($site in $sites) {
-        
-            $waURL = $site.WebApp.Url
-            $scURL = $site.SiteDet.Url
-            $siteWebs = $site.SiteDet.AllWebs
-                        
-            foreach ($siteWeb in $siteWebs) { 
-        
-                $bIsPremium = $false
-
-                $siteURL = $siteWeb.URL
-                
-                ## Get list of Site Groups
-                $siteGroups = $siteWeb.Groups
-                $siteUsers = $siteWeb.Users
-
-                $sitePremiumFeatures = Get-SPFeature "PremiumWeb" -Web $siteURL -ErrorAction SilentlyContinue
-                if ($sitePremiumFeatures) {
-                    ## URL has premium features
-                    $bIsPremium = $true
-                }
-                
-                LogText ("Calculating CAL for site - " + $siteURL)
-
-                ## Get the groups the user is in from AllSPGroups
-                ## Update the Users list with CAL information required
-                foreach ($siteGroup in $siteGroups) {
-                    $objGroupDetails = $htAllGroups.GetEnumerator() | where {$_.Key -eq $siteGroup.Name}
-                    ## Check if the group has any users within it.
-                    
-                    if ($objGroupDetails.Value.UsersList.Length -eq 0 ) {
-                        continue
-                    }
-                    
-                    $grpMembers = $objGroupDetails.Value.UsersList -split ";"
-                    
-                    foreach ($grpMember in $grpMembers) {
-                        $grpMember = $grpMember.Trim()
-                        if ($grpMember -ne "" -and $grpMember -ne "SHAREPOINT\System") {
-                        
-                            if ($grpMember.contains("CN")) {                                
-                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $grpMember}
-                            }
-                            else {
-                                if ($grpMember.contains("|") ) {
-                                    $userSplit = ($grpMember.Split("|")[1]) -split "\\"
-                                    # Its an AD group
-                                    if($userSplit[0].StartsWith("c:")) {
-                                        Write-Host ("User is a Domain user - " + $userSplit[0])
-                                    }
-                                }
-                                elseif ($grpMember.contains("\")) {
-                                    $userSplit = $grpMember -split "\\"
-                                }
-                                else {
-                                    continue
-                                }
-
-                                ## Process AD users that are used in SP
-                                $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
-                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $getADUserByName.distinguishedname}
-                            }                                   
-                            if ($member) {
-                                ## Update the users CAL in UsersHash
-                                Set-SPUserCAL -bIsPremium $bIsPremium -member $member -htAllUsers $htAllUsers                                    
-                            }
-                        }
-                    }
-                }
-                
-                ## Update the Users list with CAL information required
-                ## Users - Has ADUsers and ADGroups
-                foreach ($siteUserDetail in $siteUsers) {
-                    $siteUser = $siteUserDetail.LoginName.Trim()
-
-                    ## CAL for All users within site
-                    ## check if the user is Authenticated users or Everyone
-                    if ($siteUser -eq "NT AUTHORITY\authenticated users" -or $siteUser -eq "c:0(.s|true") {
-                        $htAllUsers_CAL = @{}
-                        $allUsers = $htAllUsers.GetEnumerator()
-
-                        foreach ( $user in $allUsers ) {                                    
-                            if ($user)  {                     
-                                ## Update the users CAL in UsersHash
-                                if ($bIsPremium) {
-                                    $htAllUsers_CAL.Set_Item($user.Key, "Premium")
-                                }
-                                else {
-                                    if ($user.Value -ne "Premium") {
-                                        $htAllUsers_CAL.Set_Item($user.Key, "Standard")
-                                    }
-                                }
-                            }
-                        }
-
-                        ## Update the original Hash table
-                        $htAllUsers = $htAllUsers_CAL
-                    }
-                    else {
-                        if ($siteUser -ne "" -and $siteUser -ne "SHAREPOINT\System") {
-                            
-                            if ($siteUser.contains("CN")) {                                
-                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $siteUser}
-                            }
-                            else {
-                                if ($siteUser.contains("|") ) {
-                                    # Its a group
-                                    if($siteUser.StartsWith("c:")) {
-                                        Set-ADGroupMembersCAL -ADGroupName $siteUSer.Name -htADGroups $htADGroups -bIsPremium $bIsPremium -htAllUsers $htAllUsers
-                                    }
-                                    $userSplit = ($siteUser.Split("|")[1]) -split "\\"
-                                }
-                                elseif ($siteUser.contains("\")) {
-                                    $userSplit = $siteUser -split "\\"
-                                }
-                                else {
-                                    continue
-                                }
-
-                                ## Process AD users that are used in SP
-                                $getADUserByName = $importedADUsers | where { (($_.samaccountname).ToLower() -like ("*" + $userSplit[1])) }
-                                $member = $htAllUsers.GetEnumerator() | where {$_.Key -eq $getADUserByName.distinguishedname}
-                            }                                   
-                            
-                            if ($member) {
-                                ## Update the users CAL in UsersHash
-                                Set-SPUserCAL -bIsPremium $bIsPremium -member $member -htAllUsers $htAllUsers 
-                            }
-                        }
-                    }                
-                } ## End foreach siteUser
-            }
-        }
-        
-        ## Process csv
-        $userCALs = $htAllUsers.GetEnumerator()
-
-        foreach ($userCAL in $userCALs) {
-            $details = New-Object PSObject
-            $details | Add-Member -MemberType NoteProperty -Name "User" -Value $userCAL.Key
-            $details | Add-Member -MemberType NoteProperty -Name "SPCALRequired" -Value $userCAL.Value
-
-            $resultUserCAL += $details
-        }
-        
-        ## Export user CAL information
-        $resultUserCAL | Export-Csv -Path $OutputFile3 -NoTypeInformation -Encoding UTF8
-	    LogText "User CAL report exported"
+	    
+		LogProgress "Export Complete"
         
     }
     catch {
-        LogError -errorDescription "An exception occurred while processing CAL for SharePoint"
 		LogLastException
     }
 }
 
-# Call the Get-SharePointLicenseDetails Function to 
+# Call the Get-SharePointLicenseDetails function to 
 #	- Get Web Applications, Site Collections and Site details
-#	- Get AD and SharePoint Groups and AD Users
+#	- Get AD and SharePoint Groups and Users info
 #   - Calculate Required CALs
-#	- Export CSV
 Get-SharePointLicenseDetails
