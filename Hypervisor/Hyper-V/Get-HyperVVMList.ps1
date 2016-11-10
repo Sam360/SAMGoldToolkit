@@ -1,4 +1,4 @@
- ##########################################################################
+﻿ ##########################################################################
  # 
  # Get-HyperVVMList
  # SAM Gold Toolkit
@@ -28,7 +28,7 @@ Host name of Hyper-V server to scan
 
 .EXAMPLE
 Get all guest, host and migration info from Hyper-V server 'Defiant'. 
-Get-HyperVVMList �HyperVServer Defiant
+Get-HyperVVMList –HyperVServer Defiant
 
 .NOTES
 File 2,3 & 4 will only contain data when querying Hyper-V servers with Windows Server 2012 R2 onwards installed.
@@ -52,36 +52,26 @@ Param(
 	[switch]
 	$Verbose)
 
-function LogText {
-	param(
-		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
-		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor  
-	)
-
-	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color
-
-	if ($LogFile) {
-		$Object | Out-File $LogFile -Encoding utf8 -Append 
-	}
-}
-
 function InitialiseLogFile {
 	if ($LogFile -and (Test-Path $LogFile)) {
 		Remove-Item $LogFile
 	}
 }
 
-function LogProgress($progressDescription){
-	if ($Verbose){
-		LogText ""
-	}
+function LogText {
+	param(
+		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+		[Object] $Object,
+		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+		[switch]$noNewLine = $false 
+	)
 
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $progressDescription
-	LogText $output -Color Green
+	# Display text on screen
+	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
+
+	if ($LogFile) {
+		$Object | Out-File $LogFile -Encoding utf8 -Append 
+	}
 }
 
 function LogError([string[]]$errorDescription){
@@ -114,6 +104,17 @@ function LogLastException() {
     }
 
 	Start-Sleep -s 3
+}
+
+function LogProgress($progressDescription){
+	if ($Verbose){
+		LogText ""
+	}
+
+	$output = Get-Date -Format HH:mm:ss.ff
+	$output += " - "
+	$output += $progressDescription
+	LogText $output -Color Green
 }
 
 function LogEnvironmentDetails {
@@ -155,9 +156,10 @@ function Get-HyperVVMList1 {
 	}
 
 	# Get all virtual machine objects on the server in question
-	$VMs = gwmi -namespace $hyperVNamespace Msvm_ComputerSystem -computername $HyperVServer -filter "Caption = 'Virtual Machine'" 
- 
-	# Go over each of the virtual machines
+	$VMs = gwmi -namespace $hyperVNamespace Msvm_ComputerSystem -computername $HyperVServer | where {($_.Caption -split " ").Length -eq 2} 
+    # Example Captions - "Virtual Machine, "Máquina virtual", "Виртуальная машина"
+	
+    # Go over each of the virtual machines
 	foreach ($VM in [array] $VMs) 
 	{
 		if ($Verbose){
