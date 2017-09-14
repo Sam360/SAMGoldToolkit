@@ -20,7 +20,9 @@
 	$PortNumber = "0",
     $SQLCommandTimeout = 300,
 	[ValidateSet("2007","2012")]
-	$SCCMVersion = "2012")
+	$SCCMVersion = "2012",
+    [switch]
+	$AllVendors)
 	
 function LogLastException()
 {
@@ -54,6 +56,31 @@ function LogEnvironmentDetails {
 	Write-Output "Server Parameter:         $DatabaseServer"
 	Write-Output "Database Parameter:       $DatabaseName"
 	Write-Output "Required Data:            $RequiredData"
+}
+
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
 }
 
 function LogProgress($progressDescription){
@@ -137,6 +164,7 @@ function Invoke-SQL {
 function Get-SCCMInventoryData {
 	try {
 		LogEnvironmentDetails
+        SetupDateFormats
 		
 		if ($RequiredData -eq "DeviceData" -or $RequiredData -eq "AllData") {
 			if ($SCCMVersion -eq "2007") {
@@ -148,12 +176,10 @@ function Get-SCCMInventoryData {
 		}
 		
 		if ($RequiredData -eq "SoftwareData" -or $RequiredData -eq "AllData") {
-			if ($SCCMVersion -eq "2007") {
-				Invoke-SQL -SQLCommand $sqlCommandSoftware2007 -ResultsFilePath $OutputFile2 
-			}
-			else {
-				Invoke-SQL -SQLCommand $sqlCommandSoftware2012 -ResultsFilePath $OutputFile2
-			}
+            if ($AllVendors) {
+                $sqlCommandSoftware = $sqlCommandSoftware.replace('--//All Vendors//--','')
+            }
+			Invoke-SQL -SQLCommand $sqlCommandSoftware -ResultsFilePath $OutputFile2 
 		}
 	}
 	catch{
@@ -315,7 +341,20 @@ OUTER APPLY
 	) AS [NetworkAdapter1] (IPAddress);
 "@
 
-$sqlCommandSoftware2012 = @"
+# THis script used to use v_GS_INSTALLED_SOFTWARE
+# v_GS_INSTALLED_SOFTWARE requires Asset Intelligence and software scanning to be enabled
+# This table included install location
+
+# Now using v_ADD_REMOVE_PROGRAMS which is populated during HW scan
+# It is the combination of ARP 32 bit and ARP 64 bit
+# i.e. Union of v_GS_ADD_REMOVE_PROGRAMS and v_GS_ADD_REMOVE_PROGRAMS_64 
+
+# Other notes: 
+# v_HS_ADD_REMOVE_PROGRAMS & v_HS_ADD_REMOVE_PROGRAMS_64 contain historical data
+# v_GS_SoftwareProduct is populated by software inventory and is based on information obtained from the file headers
+
+
+$sqlCommandSoftware = @"
 SELECT
 	[SoftwareCollection].[DeviceSourceKey] AS [DeviceSourceKey]
 	,CONVERT(varchar(19), GETDATE(), 126) AS [DiscoveryDate]
@@ -332,29 +371,32 @@ FROM
 -- Select entries from the v_GS_Installed_Software View
 		SELECT
 			[Software].[ResourceID] AS [DeviceSourceKey]
-			,[Software].[InstalledLocation0] AS [InstalledLocation]
-			,COALESCE(NULLIF([Software].[ProductName0], ''), N'Unknown') AS [ProductName]
-			,COALESCE(NULLIF([Software].[ProductVersion0], ''), N'Unknown') AS [ProductVersion]
+			,NULL AS [InstalledLocation]
+			,COALESCE(NULLIF([Software].[DisplayName0], ''), N'Unknown') AS [ProductName]
+			,COALESCE(NULLIF([Software].[Version0], ''), N'Unknown') AS [ProductVersion]
 			,COALESCE(NULLIF([Software].[Publisher0], ''), N'Unknown') AS [Publisher]
-			,[Software].[SoftwareCode0] AS [SoftwareCode]
-			,[Software].[PackageCode0] AS [PackageCode]
+			,[Software].[ProdID0] AS [SoftwareCode]
+			,[Software].[ProdID0] AS [PackageCode]
+			,[Software].[InstallDate0] AS [InstallDate]
 			,0 AS [IsOperatingSystem]
-			,'v_GS_IS' AS [Source]
+			,'v_ARP' AS [Source]
 		FROM 
-			[dbo].[v_GS_Installed_Software] AS [Software]
+			[dbo].[v_ADD_REMOVE_PROGRAMS] AS [Software]
 -- Apply this filter to remove software we don't care about at the present time to reduce the volume
 		WHERE
-			CHARINDEX('microsoft', [Software].[Publisher0]) > 0
-		AND
-			CHARINDEX('KB', [Software].[ProductName0]) +
-			CHARINDEX('.NET Framework', [Software].[ProductName0]) +
-			CHARINDEX('Update', [Software].[ProductName0]) +
-			CHARINDEX('Service Pack', [Software].[ProductName0]) +
-			CHARINDEX('Proof', [Software].[ProductName0]) +
-			CHARINDEX('Components', [Software].[ProductName0]) +
-			CHARINDEX('Tools', [Software].[ProductName0]) +
-			CHARINDEX('MUI', [Software].[ProductName0]) +
-			CHARINDEX('Redistributable', [Software].[ProductName0]) = 0
+			(CHARINDEX('microsoft', [Software].[Publisher0]) > 0
+		    AND
+			    CHARINDEX('KB', [Software].[DisplayName0]) +
+			    CHARINDEX('.NET Framework', [Software].[DisplayName0]) +
+			    CHARINDEX('Update', [Software].[DisplayName0]) +
+			    CHARINDEX('Service Pack', [Software].[DisplayName0]) +
+			    CHARINDEX('Proof', [Software].[DisplayName0]) +
+			    CHARINDEX('Components', [Software].[DisplayName0]) +
+			    CHARINDEX('Tools', [Software].[DisplayName0]) +
+			    CHARINDEX('MUI', [Software].[DisplayName0]) +
+			    CHARINDEX('Redistributable', [Software].[DisplayName0]) = 0
+            )
+            --//All Vendors//-- OR CHARINDEX('microsoft', [Software].[Publisher0]) <= 0
 		UNION ALL
 -- Select entries from the v_GS_Operating_System View
 		SELECT
@@ -369,6 +411,7 @@ FROM
 			END AS [Publisher]
 			,NULL AS [SoftwareCode]
 			,NULL AS [PackageCode]
+			,[OperatingSystem].[InstallDate0] AS [InstallDate]
 			,1 AS [IsOperatingSystem]
 			,'v_GS_OS' AS [Source]
 		FROM 
@@ -555,84 +598,6 @@ OUTER APPLY
 			[NetworkConfig].[IPAddress0] NOT IN ('0.0.0.0')
 		FOR XML PATH ('')
 	) AS [NetworkAdapter1] (IPAddress);
-"@
-
-$sqlCommandSoftware2007 = @"
-SELECT
-	[SoftwareCollection].[DeviceSourceKey] AS [DeviceSourceKey]
-	,CONVERT(varchar(19), GETDATE(), 126) AS [DiscoveryDate]
-	,[SoftwareCollection].[InstalledLocation] AS [InstalledLocation]
-	,[SoftwareCollection].[ProductName]  AS [SwName]
-	,[SoftwareCollection].[ProductVersion]  AS [SwVersion]
-	,[SoftwareCollection].[Publisher]  AS [SwPublisher]
-	,[SoftwareCollection].[SoftwareCode] AS [SwSoftwareCode]
-	,[SoftwareCollection].[PackageCode] AS [SwSoftwareId]
-	,[SoftwareCollection].[IsOperatingSystem]
-	,[SoftwareCollection].[Source]
-FROM
-	(
--- Select entries from the v_GS_Installed_Software View
-		SELECT
-			[Software].[ResourceID] AS [DeviceSourceKey]
-			,[Software].[InstalledLocation0] AS [InstalledLocation]
-			,COALESCE(NULLIF([Software].[ProductName0], ''), N'Unknown') AS [ProductName]
-			,COALESCE(NULLIF([Software].[ProductVersion0], ''), N'Unknown') AS [ProductVersion]
-			,COALESCE(NULLIF([Software].[Publisher0], ''), N'Unknown') AS [Publisher]
-			,[Software].[SoftwareCode0] AS [SoftwareCode]
-			--/--,[Software].[PackageCode0] AS [PackageCode]
-			,NULL AS [PackageCode]
-			,0 AS [IsOperatingSystem]
-			,'v_GS_IS' AS [Source]
-		FROM 
-			[dbo].[v_GS_Installed_Software] AS [Software]
--- Apply this filter to remove software we don't care about at the present time to reduce the volume
-		WHERE
-			CHARINDEX('microsoft', [Software].[Publisher0]) > 0
-		AND
-			CHARINDEX('KB', [Software].[ProductName0]) +
-			CHARINDEX('.NET Framework', [Software].[ProductName0]) +
-			CHARINDEX('Update', [Software].[ProductName0]) +
-			CHARINDEX('Service Pack', [Software].[ProductName0]) +
-			CHARINDEX('Proof', [Software].[ProductName0]) +
-			CHARINDEX('Components', [Software].[ProductName0]) +
-			CHARINDEX('Tools', [Software].[ProductName0]) +
-			CHARINDEX('MUI', [Software].[ProductName0]) +
-			CHARINDEX('Redistributable', [Software].[ProductName0]) = 0
-		UNION ALL
--- Select entries from the v_GS_Operating_System View
-		SELECT
-			[OperatingSystem].[ResourceID] AS [DeviceSourceKey]
-			,NULL AS [InstalledLocation]
-			,COALESCE(NULLIF([OperatingSystem].[Caption0], ''), N'Unknown OS') AS [ProductName]
-			,COALESCE(NULLIF([OperatingSystem].[Version0], ''), N'Unknown') AS [ProductVersion]
-			,CASE
-				WHEN [OperatingSystem].[Caption0] LIKE N'%windows%'
-				THEN N'Microsoft'
-				ELSE N'Unknown'
-			END AS [Publisher]
-			,NULL AS [SoftwareCode]
-			,NULL AS [PackageCode]
-			,1 AS [IsOperatingSystem]
-			,'v_GS_OS' AS [Source]
-		FROM 
-			[dbo].[v_GS_Operating_System] AS [OperatingSystem]
-	) AS [SoftwareCollection]
-INNER JOIN 
-	[dbo].[v_FullCollectionMembership] AS [FullCollectionMembership]
-ON
-	[SoftwareCollection].[DeviceSourceKey] = [FullCollectionMembership].[ResourceID]
-AND
-	[FullCollectionMembership].[CollectionID] IN ('SMS00001')
-GROUP BY
-	[SoftwareCollection].[DeviceSourceKey]
-	,[SoftwareCollection].[InstalledLocation]
-	,[SoftwareCollection].[ProductName]
-	,[SoftwareCollection].[ProductVersion]
-	,[SoftwareCollection].[Publisher]
-	,[SoftwareCollection].[SoftwareCode]
-	,[SoftwareCollection].[PackageCode]
-	,[SoftwareCollection].[IsOperatingSystem]
-	,[SoftwareCollection].[Source]
 "@
 
 Get-SCCMInventoryData
