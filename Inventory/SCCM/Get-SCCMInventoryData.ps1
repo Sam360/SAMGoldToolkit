@@ -13,6 +13,8 @@
     $OutputFile1 = "Devices.csv",
     [alias("o2")]
     $OutputFile2 = "Software.csv",
+    [alias("log")]
+    [string] $LogFile = "SCCMLogFile.txt",
     $UserName,
     $Password,
     [ValidateSet("AllData","DeviceData","SoftwareData")]
@@ -24,38 +26,98 @@
     [switch]
     $AllVendors)
     
-function LogLastException()
-{
+function InitialiseLogFile {
+    if ($LogFile -and (Test-Path $LogFile)) {
+        Remove-Item $LogFile
+    }
+}
+
+function LogText {
+    param(
+        [Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+        [Object] $Object,
+        [System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+        [switch]$noNewLine = $false 
+    )
+
+    # Display text on screen
+    Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
+
+    if ($LogFile) {
+        $Object | Out-File $LogFile -Encoding utf8 -Append 
+    }
+}
+
+function LogError([string[]]$errorDescription){
+    if ($Verbose){
+        LogText ""
+    }
+
+    $output = Get-Date -Format HH:mm:ss.ff
+    $output += " - "
+    $output += $errorDescription -join "`r`n              "
+    LogText $output -Color Red
+    Start-Sleep -s 3
+}
+
+function LogLastException() {
     $currentException = $Error[0].Exception;
 
     while ($currentException)
     {
-        write-output $currentException
-        write-output $currentException.Data
-        write-output $currentException.HelpLink
-        write-output $currentException.HResult
-        write-output $currentException.Message
-        write-output $currentException.Source
-        write-output $currentException.StackTrace
-        write-output $currentException.TargetSite
+        LogText -Color Red $currentException
+        LogText -Color Red $currentException.Data
+        LogText -Color Red $currentException.HelpLink
+        LogText -Color Red $currentException.HResult
+        LogText -Color Red $currentException.Message
+        LogText -Color Red $currentException.Source
+        LogText -Color Red $currentException.StackTrace
+        LogText -Color Red $currentException.TargetSite
 
         $currentException = $currentException.InnerException
     }
+
+    Start-Sleep -s 3
+}
+
+function LogProgress($progressDescription){
+    if ($Verbose){
+        LogText ""
+    }
+
+    $output = Get-Date -Format HH:mm:ss.ff
+    $output += " - "
+    $output += $progressDescription
+    LogText $output -Color Green
 }
 
 function LogEnvironmentDetails {
+    LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+    LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+    LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+    LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+    LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+    LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+    LogText -Color Gray " "
+    LogText -Color Gray " Get-SCCMInventoryData.ps1"
+    LogText -Color Gray " "
+
     $OSDetails = Get-WmiObject Win32_OperatingSystem
-    Write-Output "Computer Name:            $($env:COMPUTERNAME)"
-    Write-Output "User Name:                $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-    Write-Output "Windows Version:          $($OSDetails.Caption)($($OSDetails.Version))"
-    Write-Output "PowerShell Host:          $($host.Version.Major)"
-    Write-Output "PowerShell Version:       $($PSVersionTable.PSVersion)"
-    Write-Output "PowerShell Word size:     $($([IntPtr]::size) * 8) bit"
-    Write-Output "CLR Version:              $($PSVersionTable.CLRVersion)"
-    Write-Output "Username Parameter:       $UserName"
-    Write-Output "Server Parameter:         $DatabaseServer"
-    Write-Output "Database Parameter:       $DatabaseName"
-    Write-Output "Required Data:            $RequiredData"
+    LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
+    LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+    LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+    LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
+    LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
+    LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+    LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+    LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+    LogText -Color Gray "Username Parameter:   $UserName"
+    LogText -Color Gray "Server Parameter:     $DatabaseServer"
+    LogText -Color Gray "Database Parameter:   $DatabaseName"
+    LogText -Color Gray "Required Data:        $RequiredData"
+    LogText -Color Gray "Output File 1:        $OutputFile1"
+    LogText -Color Gray "Output File 2:        $OutputFile2"
+    LogText -Color Gray ""
 }
 
 function SetupDateFormats {
@@ -81,13 +143,6 @@ function SetupDateFormats {
         catch {
         }
     }
-}
-
-function LogProgress($progressDescription){
-    $output = Get-Date -Format HH:mm:ss.ff
-    $output += " - "
-    $output += $progressDescription
-    write-output $output
 }
 
 function GetConnectionString {
@@ -163,6 +218,7 @@ function Invoke-SQL {
 
 function Get-SCCMInventoryData {
     try {
+        InitialiseLogFile
         LogEnvironmentDetails
         SetupDateFormats
         
