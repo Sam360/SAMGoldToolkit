@@ -192,6 +192,31 @@ function LogEnvironmentDetails {
 	LogText -Color Gray ""
 }
 
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
+}
+
 function VerifySignature([string]$msiPath) {
 	$sign = Get-AuthenticodeSignature $msiPath
 
@@ -617,6 +642,7 @@ function Get-Office365LicenseDetails() {
 	try {
 		InitialiseLogFile
 		LogEnvironmentDetails
+        SetupDateFormats
 		
 		if (-not (ConfigureOffice365Environment)) {
 			return;
