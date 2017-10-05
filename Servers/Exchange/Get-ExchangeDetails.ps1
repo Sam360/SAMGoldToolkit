@@ -14,14 +14,14 @@ Retrieves Exchange server, mail box, ActiveSync device and CAL information from 
 
 .DESCRIPTION
 The Get-ExchangeDetails script queries a single Exchange Server and produces up to 5 CSV files
-	1)    ExchangeServerDetails.csv - One record per Exchange Server in the farm
-	2)    ExchangeMailBoxes.csv - One record per MailBox
-	3)    ExchangeDevices.csv - One record per ActiveSync device
-	4)    ExchangeCALs.csv - General CAL requirement details 
-	5)    ExchangeCALDetails.csv - Lists all servers and MailBoxes that require a license and 
-	      the type of license required
+    1)    ExchangeServerDetails.csv - One record per Exchange Server in the farm
+    2)    ExchangeMailBoxes.csv - One record per MailBox
+    3)    ExchangeDevices.csv - One record per ActiveSync device
+    4)    ExchangeCALs.csv - General CAL requirement details 
+    5)    ExchangeCALDetails.csv - Lists all servers and MailBoxes that require a license and 
+          the type of license required
 
-	Files are written to current working directory
+    Files are written to current working directory
 
 .PARAMETER Server 
 Host name of Exchange server to scan
@@ -53,74 +53,74 @@ selected Exchange server. It's possible to collect subsets of the data. Possible
 This script supports Exchange server 2007 onwards. There are some limitations on what data can be
 collected from different versions of Exchange server remotely. If the script fails to execute remotely
 try
-	1)	Specify a username and password (even if they are the details of the current user)
-	2)  Execute the script locally on the Exchange Server
+    1)	Specify a username and password (even if they are the details of the current user)
+    2)  Execute the script locally on the Exchange Server
 #>
 
  Param(
-	[alias("server")]
-	$ExchangeServer,
-	[alias("o1")]
-	$OutputFile1 = "ExchangeServerDetails" + $ExchangeServer + ".csv",
-	[alias("o2")]
-	$OutputFile2 = "ExchangeMailBoxes" + $ExchangeServer + ".csv",
-	[alias("o3")]
-	$OutputFile3 = "ExchangeDevices" + $ExchangeServer + ".csv",
-	[alias("o4")]
-	$OutputFile4 = "ExchangeCALs" + $ExchangeServer + ".csv",
-	[alias("o5")]
-	$OutputFile5 = "ExchangeCALDetails" + $ExchangeServer + ".csv",
-	[alias("log")]
-	[string] $LogFile = "ExchangeQueryLog.txt",
-	$UserName,
-	$Password,
-	[switch]
-	$Office365,
-	[switch]
-	$UseSSL,
-	[ValidateSet("2007","2010","2010SP1","2010SP3","2013")]
-	$CALScriptVersion,
-	[ValidateSet("AllData","ServerData","EntityData","UtilizationData","CALData")] 
-	$RequiredData = "AllData",
-	[ValidateSet("Both","RemoteSession","SnapIn")] 
-	$ConnectionMethod = "Both",
+    [alias("server")]
+    $ExchangeServer,
+    [alias("o1")]
+    $OutputFile1 = "ExchangeServerDetails" + $ExchangeServer + ".csv",
+    [alias("o2")]
+    $OutputFile2 = "ExchangeMailBoxes" + $ExchangeServer + ".csv",
+    [alias("o3")]
+    $OutputFile3 = "ExchangeDevices" + $ExchangeServer + ".csv",
+    [alias("o4")]
+    $OutputFile4 = "ExchangeCALs" + $ExchangeServer + ".csv",
+    [alias("o5")]
+    $OutputFile5 = "ExchangeCALDetails" + $ExchangeServer + ".csv",
+    [alias("log")]
+    [string] $LogFile = "ExchangeQueryLog.txt",
+    $UserName,
+    $Password,
     [switch]
-	$Verbose = $false,
+    $Office365,
     [switch]
-	$Headless = $false)
+    $UseSSL,
+    [ValidateSet("2007","2010","2010SP1","2010SP3","2013")]
+    $CALScriptVersion,
+    [ValidateSet("AllData","ServerData","EntityData","UtilizationData","CALData")] 
+    $RequiredData = "AllData",
+    [ValidateSet("Both","RemoteSession","SnapIn")] 
+    $ConnectionMethod = "Both",
+    [switch]
+    $Verbose = $false,
+    [switch]
+    $Headless = $false)
 
 function InitialiseLogFile {
-	if ($LogFile -and (Test-Path $LogFile)) {
-		Remove-Item $LogFile
-	}
+    if ($LogFile -and (Test-Path $LogFile)) {
+        Remove-Item $LogFile
+    }
 }
 
 function LogText {
-	param(
-		[Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
-		[Object] $Object,
-		[System.ConsoleColor]$color = [System.Console]::ForegroundColor,
-		[switch]$noNewLine = $false 
-	)
+    param(
+        [Parameter(Position=0, ValueFromRemainingArguments=$true, ValueFromPipeline=$true)]
+        [Object] $Object,
+        [System.ConsoleColor]$color = [System.Console]::ForegroundColor,
+        [switch]$noNewLine = $false 
+    )
 
-	# Display text on screen
-	Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
+    # Display text on screen
+    Write-Host -Object $Object -ForegroundColor $color -NoNewline:$noNewLine
 
-	if ($LogFile) {
-		$Object | Out-File $LogFile -Encoding utf8 -Append 
-	}
+    if ($LogFile) {
+        $Object | Out-File $LogFile -Encoding utf8 -Append 
+    }
 }
 
 function LogError([string[]]$errorDescription){
-	if ($Verbose){
-		LogText ""
-	}
+    if ($Verbose){
+        LogText ""
+    }
 
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $errorDescription -join "`r`n              "
-	LogText $output -Color Red
-	Start-Sleep -s 3
+    $output = Get-Date -Format HH:mm:ss.ff
+    $output += " - "
+    $output += $errorDescription -join "`r`n              "
+    LogText $output -Color Red
+    Start-Sleep -s 3
 }
 
 function LogLastException() {
@@ -140,103 +140,103 @@ function LogLastException() {
         $currentException = $currentException.InnerException
     }
 
-	Start-Sleep -s 3
+    Start-Sleep -s 3
 }
 
 function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete, [switch]$Completed ){
-	
-	Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
-	
-	if ($Verbose){
-		LogText ""
-	}
+    
+    Write-Progress -activity $Activity -Status $Status -percentComplete $PercentComplete -Completed:$Completed
+    
+    if ($Verbose){
+        LogText ""
+    }
 
-	$output = Get-Date -Format HH:mm:ss.ff
-	$output += " - "
-	$output += $Status
-	LogText $output -Color Green
+    $output = Get-Date -Format HH:mm:ss.ff
+    $output += " - "
+    $output += $Status
+    LogText $output -Color Green
 }
 
 function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){
-	$strResult = ""
-	
-	if ($Message) {
-		LogText $Message -color Yellow
-	}
+    $strResult = ""
+    
+    if ($Message) {
+        LogText $Message -color Yellow
+    }
 
-	if ($DefaultValue) {
-		$Prompt += " (Default [$DefaultValue])"
-	}
+    if ($DefaultValue) {
+        $Prompt += " (Default [$DefaultValue])"
+    }
 
-	$Prompt += ": "
-	LogText $Prompt -color Yellow -NoNewLine
-	
-	if ($Headless) {
-		LogText " (Headless - Using Default Value)" -color Yellow
-	}
-	else {
-		$strResult = Read-Host -AsSecureString:$AsSecureString
-	}
+    $Prompt += ": "
+    LogText $Prompt -color Yellow -NoNewLine
+    
+    if ($Headless) {
+        LogText " (Headless - Using Default Value)" -color Yellow
+    }
+    else {
+        $strResult = Read-Host -AsSecureString:$AsSecureString
+    }
 
-	if(!$strResult) {
-		$strResult = $DefaultValue
-		if ($AsSecureString) {
-			$strResult = ConvertTo-SecureString $strResult -AsPlainText -Force
-		}
-	}
+    if(!$strResult) {
+        $strResult = $DefaultValue
+        if ($AsSecureString) {
+            $strResult = ConvertTo-SecureString $strResult -AsPlainText -Force
+        }
+    }
 
-	return $strResult
+    return $strResult
 }
 
 function Get-ConsoleCredential([String] $Message, [String] $DefaultUsername)
 {
-	$strUsername = QueryUser -Message $Message -Prompt "Username" -DefaultValue $DefaultUsername
-	if (!$strUsername){
-		return $null
-	}
+    $strUsername = QueryUser -Message $Message -Prompt "Username" -DefaultValue $DefaultUsername
+    if (!$strUsername){
+        return $null
+    }
 
-	$strSecurePassword = QueryUser -Prompt "Password" -AsSecureString
-	if (!$strSecurePassword){
-		return $null
-	}
+    $strSecurePassword = QueryUser -Prompt "Password" -AsSecureString
+    if (!$strSecurePassword){
+        return $null
+    }
 
-	return new-object Management.Automation.PSCredential $strUsername, $strSecurePassword
+    return new-object Management.Automation.PSCredential $strUsername, $strSecurePassword
 }
                                                                           
 function LogEnvironmentDetails {
-	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
-	LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
-	LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
-	LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
-	LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
-	LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
-	LogText -Color Gray " "
-	LogText -Color Gray " Get-ExchangeDetails.ps1"
-	LogText -Color Gray " "
+    LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
+    LogText -Color Gray "  / ____|  /\   |  \/  |  / ____|     | |   | | |__   __|        | | |  (_) |  "
+    LogText -Color Gray " | (___   /  \  | \  / | | |  __  ___ | | __| |    | | ___   ___ | | | ___| |_ "
+    LogText -Color Gray "  \___ \ / /\ \ | |\/| | | | |_ |/ _ \| |/ _`` |    | |/ _ \ / _ \| | |/ / | __|"
+    LogText -Color Gray "  ____) / ____ \| |  | | | |__| | (_) | | (_| |    | | (_) | (_) | |   <| | |_ "
+    LogText -Color Gray " |_____/_/    \_\_|  |_|  \_____|\___/|_|\__,_|    |_|\___/ \___/|_|_|\_\_|\__|"
+    LogText -Color Gray " "
+    LogText -Color Gray " Get-ExchangeDetails.ps1"
+    LogText -Color Gray " "
 
-	$OSDetails = Get-WmiObject Win32_OperatingSystem
-	LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
-	LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
-	LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
-	LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
-	LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
-	LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
-	LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
-	LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
-	LogText -Color Gray "Username Parameter:   $UserName"
-	LogText -Color Gray "Server Parameter:     $ExchangeServer"
-	LogText -Color Gray "Required Data:        $RequiredData"
-	LogText -Color Gray "Connection Method:    $ConnectionMethod"
-	LogText -Color Gray "CAL Script Version:   $CALScriptVersion"
-	LogText -Color Gray "Output File 1:        $OutputFile1"
-	LogText -Color Gray "Output File 2:        $OutputFile2"
-	LogText -Color Gray "Output File 3:        $OutputFile3"
-	LogText -Color Gray "Output File 4:        $OutputFile4"
-	LogText -Color Gray "Output File 5:        $OutputFile5"
-	LogText -Color Gray "Log File:             $LogFile"
+    $OSDetails = Get-WmiObject Win32_OperatingSystem
+    LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
+    LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
+    LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
+    LogText -Color Gray "PowerShell Host:      $($host.Version.Major)"
+    LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
+    LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
+    LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+    LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
+    LogText -Color Gray "Username Parameter:   $UserName"
+    LogText -Color Gray "Server Parameter:     $ExchangeServer"
+    LogText -Color Gray "Required Data:        $RequiredData"
+    LogText -Color Gray "Connection Method:    $ConnectionMethod"
+    LogText -Color Gray "CAL Script Version:   $CALScriptVersion"
+    LogText -Color Gray "Output File 1:        $OutputFile1"
+    LogText -Color Gray "Output File 2:        $OutputFile2"
+    LogText -Color Gray "Output File 3:        $OutputFile3"
+    LogText -Color Gray "Output File 4:        $OutputFile4"
+    LogText -Color Gray "Output File 5:        $OutputFile5"
+    LogText -Color Gray "Log File:             $LogFile"
     LogText -Color Gray "Verbose:              $Verbose"
     LogText -Color Gray "Headless:             $Headless"
-	LogText -Color Gray ""
+    LogText -Color Gray ""
 }
 
 function SetupDateFormats {
@@ -265,10 +265,10 @@ function SetupDateFormats {
 }
 
 function EnvironmentConfigured {
-	if (Get-Command "Get-MailboxStatistics" -errorAction SilentlyContinue){
-		return $true}
-	else {
-		return $false}
+    if (Get-Command "Get-MailboxStatistics" -errorAction SilentlyContinue){
+        return $true}
+    else {
+        return $false}
 }
 
 function CountItems {
@@ -288,148 +288,148 @@ function CountItems {
 
 function Get-ExchangeDetails {
 
-	InitialiseLogFile
-	LogProgress -Activity "Exchange Data Export" -Status "Logging environment details" -percentComplete 1
-	LogEnvironmentDetails
+    InitialiseLogFile
+    LogProgress -Activity "Exchange Data Export" -Status "Logging environment details" -percentComplete 1
+    LogEnvironmentDetails
     SetupDateFormats
 
-	if (($ConnectionMethod -eq "Both") -or ($ConnectionMethod -eq "RemoteSession") -or $Office365)
-	{
+    if (($ConnectionMethod -eq "Both") -or ($ConnectionMethod -eq "RemoteSession") -or $Office365)
+    {
         if (!($ExchangeServer) -and !($Office365))
-	    {
-		    # Target server was not specified on the command line. Query user.
-		    $ExchangeServer = QueryUser -Prompt "Exchange Server" -DefaultValue "$($env:computerName)"
-	    }
+        {
+            # Target server was not specified on the command line. Query user.
+            $ExchangeServer = QueryUser -Prompt "Exchange Server" -DefaultValue "$($env:computerName)"
+        }
 
         # Create the Credentials object if username has been provided
-	    LogProgress -activity "Exchange Data Export" -Status "Exchange Server Administrator Credentials Required" -percentComplete 2
-	    if(!($UserName -and $Password)){
-		    $exchangeCreds = Get-ConsoleCredential -Message "Exchange Server Credentials Required" -DefaultUsername $UserName
-	    }
-	    else 
-	    {
-		    $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
-		    $exchangeCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
-	    }
+        LogProgress -activity "Exchange Data Export" -Status "Exchange Server Administrator Credentials Required" -percentComplete 2
+        if(!($UserName -and $Password)){
+            $exchangeCreds = Get-ConsoleCredential -Message "Exchange Server Credentials Required" -DefaultUsername $UserName
+        }
+        else 
+        {
+            $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+            $exchangeCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
+        }
 
-	    # Connect to exchange server
-	    LogProgress -activity "Exchange Data Export" -Status "Connecting..." -percentComplete 3
-	    if ($Office365)
-	    {
-		    $connectionUri = "https://ps.outlook.com/powershell/"
-		    $authenticationType = "Basic"
-	    }
-	    else
-	    {
-		    $connectionUri = "http://"
-		    if ($UseSSL) {
-			    $connectionUri = "https://"
-		    }
-		    $connectionUri += $ExchangeServer + "/powershell/"
-		    $authenticationType = "Kerberos"
-	    }
-	
-	    if ($Verbose)
-	    {
-		    LogText "ConnectionUri: $connectionUri"
-		    LogText "AuthenticationType: $authenticationType"
-		    LogText "UserName: $($exchangeCreds.UserName)"
-	    }
+        # Connect to exchange server
+        LogProgress -activity "Exchange Data Export" -Status "Connecting..." -percentComplete 3
+        if ($Office365)
+        {
+            $connectionUri = "https://ps.outlook.com/powershell/"
+            $authenticationType = "Basic"
+        }
+        else
+        {
+            $connectionUri = "http://"
+            if ($UseSSL) {
+                $connectionUri = "https://"
+            }
+            $connectionUri += $ExchangeServer + "/powershell/"
+            $authenticationType = "Kerberos"
+        }
+    
+        if ($Verbose)
+        {
+            LogText "ConnectionUri: $connectionUri"
+            LogText "AuthenticationType: $authenticationType"
+            LogText "UserName: $($exchangeCreds.UserName)"
+        }
 
-		if ($exchangeCreds)
-		{
-			$exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $connectionUri -Authentication $authenticationType -AllowRedirection -Credential $exchangeCreds -WarningAction:silentlycontinue
-		}
-		else
-		{
-			$exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $connectionUri -Authentication $authenticationType -AllowRedirection -WarningAction:silentlycontinue
-		}
-	}
-		
-	if ($exchangeSession) {
-		LogProgress -activity "Exchange Data Export" -Status "Importing Session" -percentComplete 10	
-		Import-PSSession $exchangeSession -AllowClobber -WarningAction:silentlycontinue
-	}
+        if ($exchangeCreds)
+        {
+            $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $connectionUri -Authentication $authenticationType -AllowRedirection -Credential $exchangeCreds -WarningAction:silentlycontinue
+        }
+        else
+        {
+            $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $connectionUri -Authentication $authenticationType -AllowRedirection -WarningAction:silentlycontinue
+        }
+    }
+        
+    if ($exchangeSession) {
+        LogProgress -activity "Exchange Data Export" -Status "Importing Session" -percentComplete 10	
+        Import-PSSession $exchangeSession -AllowClobber -WarningAction:silentlycontinue
+    }
 
-	if (!(EnvironmentConfigured) -and !($Office365))
-	{
-		# Exchange environment not configured
-		if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "SnapIn")
-		{
-			# Load Exchange SnapIns
-			LogProgress -activity "Exchange Data Export" -Status "Loading SnapIns" -percentComplete 11
-			
-			$allSnapIns = get-pssnapin -registered
-			if ($Verbose)
-			{
-				LogText "SnapIns"
-				$allSnapIns | % { LogText "Name: $($_.Name) Version: $($_.PSVersion)"}
-			}
-			
-			$allSnapIns = $allSnapIns | sort -Descending
-			
-			foreach ($snapIn in $allSnapIns){
-				if (($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.Admin') -or
-					($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.E2010') -or
-					($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.E2013')){
-					LogText "Adding SnapIn: $($snapIn.Name)"
-					add-PSSnapin -Name $snapIn.name
-					
-					if (EnvironmentConfigured) {
-						break}
-				}
-			}
-		}
-	}
-	
-	if (!(EnvironmentConfigured))
-	{
-		LogError ("The script was unable to connect to Exchange server", 
-					"To maximise the chance of connectivity, please",
-					"   1) Ensure that the Exchange PowerShell Module is installed on this device and/or",
-					"   2) Execute this script on the Exchange server")
-		exit
-	}   
+    if (!(EnvironmentConfigured) -and !($Office365))
+    {
+        # Exchange environment not configured
+        if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "SnapIn")
+        {
+            # Load Exchange SnapIns
+            LogProgress -activity "Exchange Data Export" -Status "Loading SnapIns" -percentComplete 11
+            
+            $allSnapIns = get-pssnapin -registered
+            if ($Verbose)
+            {
+                LogText "SnapIns"
+                $allSnapIns | % { LogText "Name: $($_.Name) Version: $($_.PSVersion)"}
+            }
+            
+            $allSnapIns = $allSnapIns | sort -Descending
+            
+            foreach ($snapIn in $allSnapIns){
+                if (($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.Admin') -or
+                    ($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.E2010') -or
+                    ($snapIn.name -eq 'Microsoft.Exchange.Management.PowerShell.E2013')){
+                    LogText "Adding SnapIn: $($snapIn.Name)"
+                    add-PSSnapin -Name $snapIn.name
+                    
+                    if (EnvironmentConfigured) {
+                        break}
+                }
+            }
+        }
+    }
+    
+    if (!(EnvironmentConfigured))
+    {
+        LogError ("The script was unable to connect to Exchange server", 
+                    "To maximise the chance of connectivity, please",
+                    "   1) Ensure that the Exchange PowerShell Module is installed on this device and/or",
+                    "   2) Execute this script on the Exchange server")
+        exit
+    }   
 
-	# Get the list of Exchange Servers (Not supported in Office365)
-	if (!($Office365))
-	{
-		LogProgress -activity "Exchange Data Export" -Status "Getting server details" -percentComplete 15
-		if (Get-Command "Get-ExchangeServer" -errorAction SilentlyContinue){
-			$exchangeServers = Get-ExchangeServer # -Identity $ExchangeServer
-			$exchangeServers | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
-			if ($Verbose) {
-				LogText "Server Count: $($exchangeServers.Count)"
-			}
-		}
-		else {
-			LogText "Exchange cmdlet Get-ExchangeServer not found. Does current user have sufficient permissions?" 
-		}
-	}
-
-	if ($RequiredData -eq "EntityData" -or $RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")
-	{
-		#Get the list of mailboxes from Exchange
-		LogProgress -activity "Exchange Data Export" -Status "Querying Mailboxes" -percentComplete 20
-		$mailBoxes = Get-Mailbox -ResultSize 'Unlimited'
-		if ($mailBoxes) 
-		{
-            $mailBoxCount = CountItems($mailBoxes)
-			
+    # Get the list of Exchange Servers (Not supported in Office365)
+    if (!($Office365))
+    {
+        LogProgress -activity "Exchange Data Export" -Status "Getting server details" -percentComplete 15
+        if (Get-Command "Get-ExchangeServer" -errorAction SilentlyContinue){
+            $exchangeServers = Get-ExchangeServer # -Identity $ExchangeServer
+            $exchangeServers | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
             if ($Verbose) {
-				LogText "Mailbox Count: $mailBoxCount"
-				LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}","Count","UserPrincipalName","LastLogonTime"))
-			}
+                LogText "Server Count: $($exchangeServers.Count)"
+            }
+        }
+        else {
+            LogText "Exchange cmdlet Get-ExchangeServer not found. Does current user have sufficient permissions?" 
+        }
+    }
 
-			$listMailBoxData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
-			$mailBoxCounter = 1
+    if ($RequiredData -eq "EntityData" -or $RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")
+    {
+        #Get the list of mailboxes from Exchange
+        LogProgress -activity "Exchange Data Export" -Status "Querying Mailboxes" -percentComplete 20
+        $mailBoxes = Get-Mailbox -ResultSize 'Unlimited'
+        if ($mailBoxes) 
+        {
+            $mailBoxCount = CountItems($mailBoxes)
+            
+            if ($Verbose) {
+                LogText "Mailbox Count: $mailBoxCount"
+                LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}","Count","UserPrincipalName","LastLogonTime"))
+            }
 
-			foreach ($mailBox in $mailBoxes) {
-				
-				$mailBoxData = $mailBox | select -Property UserPrincipalName, SamAccountName, DisplayName, 
-					WindowsLiveID, ExchangeGuid, PrimarySmtpAddress, ExternalDirectoryObjectId, 
-					DistinguishedName, Guid, RecipientType, IsMailboxEnabled, WhenMailboxCreated, WhenCreatedUTC, 
-					WhenChangedUTC, ServerName, Office, ExchangeVersion, ObjectCategory, 
+            $listMailBoxData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
+            $mailBoxCounter = 1
+
+            foreach ($mailBox in $mailBoxes) {
+                
+                $mailBoxData = $mailBox | select -Property UserPrincipalName, SamAccountName, DisplayName, 
+                    WindowsLiveID, ExchangeGuid, PrimarySmtpAddress, ExternalDirectoryObjectId, 
+                    DistinguishedName, Guid, RecipientType, IsMailboxEnabled, WhenMailboxCreated, WhenCreatedUTC, 
+                    WhenChangedUTC, ServerName, Office, ExchangeVersion, ObjectCategory, 
                     @{n='EmailAddresses';e={($_ | select -expand EmailAddresses) -join ", "}}, 
                     @{n='ProtocolSettings';e={($_ | select -expand ProtocolSettings) -join ", "}},
                     LastLogonTime, LastLogoffTime, # MailboxStatistics details
@@ -450,161 +450,161 @@ function Get-ExchangeDetails {
                     $mailBoxData.EwsEnabled = $CASMailbox.EwsEnabled
                 }
 
-				if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")
-				{
-					Write-Progress -activity "Exchange Data Export" -Status "Querying Mailbox Stats $($mailBoxData.UserPrincipalName)" -percentComplete (20 + ($mailBoxCounter/$mailBoxCount)*40)
-					$mailBoxStatistics = $mailBox | Get-MailboxStatistics -WarningAction:silentlycontinue
-					$mailBoxData.LastLogonTime = $mailBoxStatistics.LastLogonTime
-					$mailBoxData.LastLogoffTime = $mailBoxStatistics.LastLogoffTime
-				}
+                if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")
+                {
+                    Write-Progress -activity "Exchange Data Export" -Status "Querying Mailbox Stats $($mailBoxData.UserPrincipalName)" -percentComplete (20 + ($mailBoxCounter/$mailBoxCount)*40)
+                    $mailBoxStatistics = $mailBox | Get-MailboxStatistics -WarningAction:silentlycontinue
+                    $mailBoxData.LastLogonTime = $mailBoxStatistics.LastLogonTime
+                    $mailBoxData.LastLogoffTime = $mailBoxStatistics.LastLogoffTime
+                }
 
-				if ($Verbose) {
-					LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}", $mailBoxCounter, $mailBoxData.UserPrincipalName, $mailBoxData.LastLogonTime))
-				}
+                if ($Verbose) {
+                    LogText  ([string]::Format("{0,-5} {1,-55} {2,-20}", $mailBoxCounter, $mailBoxData.UserPrincipalName, $mailBoxData.LastLogonTime))
+                }
 
-				$listMailBoxData.Add($mailBoxData)
-				$mailBoxCounter++
-			}
+                $listMailBoxData.Add($mailBoxData)
+                $mailBoxCounter++
+            }
 
-			$listMailBoxData | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
-		}
-		
-		#Get Device details
-		LogProgress -activity "Exchange Data Export" -Status "Querying Device Data" -percentComplete 60
+            $listMailBoxData | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
+        }
+        
+        #Get Device details
+        LogProgress -activity "Exchange Data Export" -Status "Querying Device Data" -percentComplete 60
         if (Get-Command "Get-ActiveSyncDevice" -errorAction SilentlyContinue) {
-		    $activeSyncDevices = Get-ActiveSyncDevice -ResultSize 'Unlimited' -WarningAction:silentlycontinue 
-		    if ($activeSyncDevices)
-		    {
+            $activeSyncDevices = Get-ActiveSyncDevice -ResultSize 'Unlimited' -WarningAction:silentlycontinue 
+            if ($activeSyncDevices)
+            {
                 $activeSyncDeviceCount = CountItems($activeSyncDevices)
 
-			    if ($Verbose) {
-				    LogText "Device Count: $activeSyncDeviceCount"
-				    LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}","Count","User","DeviceOS","LastSuccessSync"))
-			    }
+                if ($Verbose) {
+                    LogText "Device Count: $activeSyncDeviceCount"
+                    LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}","Count","User","DeviceOS","LastSuccessSync"))
+                }
 
-			    $listActiveSyncDeviceData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
-			    $activeSyncDeviceCounter = 1
+                $listActiveSyncDeviceData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
+                $activeSyncDeviceCounter = 1
 
-			    foreach ($activeSyncDevice in $activeSyncDevices) {
-				
-				    $activeSyncDeviceData = $activeSyncDevice | select -Property Identity, FriendlyName, Name, 
-					    DeviceId, Guid, DeviceImei, DeviceTelephoneNumber, DeviceMobileOperator, DeviceOS, DeviceOSLanguage, 
-					    DeviceType, DeviceUserAgent, DeviceModel, UserDisplayName, OrganizationId, DeviceActiveSyncVersion, 
-					    FirstSyncTime, WhenCreatedUTC, WhenChangedUTC, LastPingHeartbeat, LastSyncAttemptTime, LastSuccessSync, 
-					    LastPolicyUpdateTime, DevicePolicyApplied, DevicePolicyApplicationStatus, Status, StatusNote, 
-					    IsRemoteWipeSupported, DeviceWipeSentTime, DeviceWipeRequestTime, DeviceWipeAckTime
+                foreach ($activeSyncDevice in $activeSyncDevices) {
+                
+                    $activeSyncDeviceData = $activeSyncDevice | select -Property Identity, FriendlyName, Name, 
+                        DeviceId, Guid, DeviceImei, DeviceTelephoneNumber, DeviceMobileOperator, DeviceOS, DeviceOSLanguage, 
+                        DeviceType, DeviceUserAgent, DeviceModel, UserDisplayName, OrganizationId, DeviceActiveSyncVersion, 
+                        FirstSyncTime, WhenCreatedUTC, WhenChangedUTC, LastPingHeartbeat, LastSyncAttemptTime, LastSuccessSync, 
+                        LastPolicyUpdateTime, DevicePolicyApplied, DevicePolicyApplicationStatus, Status, StatusNote, 
+                        IsRemoteWipeSupported, DeviceWipeSentTime, DeviceWipeRequestTime, DeviceWipeAckTime
 
-				    if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData"){
-					    Write-Progress -activity "Exchange Data Export" -Status "Querying Device Stats $($activeSyncDeviceData.FriendlyName)" -percentComplete (60 + ($activeSyncDeviceCounter/$activeSyncDeviceCount)*38)
-					    $activeSyncDeviceStatistics = $activeSyncDevice | Get-ActiveSyncDeviceStatistics -WarningAction:silentlycontinue
-					    if ($activeSyncDeviceStatistics){
-						    $activeSyncDeviceData.FirstSyncTime = $activeSyncDeviceStatistics.FirstSyncTime
-						    $activeSyncDeviceData.LastPingHeartbeat = $activeSyncDeviceStatistics.LastPingHeartbeat
-						    $activeSyncDeviceData.LastSyncAttemptTime = $activeSyncDeviceStatistics.LastSyncAttemptTime
-						    $activeSyncDeviceData.LastSuccessSync = $activeSyncDeviceStatistics.LastSuccessSync
-						    $activeSyncDeviceData.LastPolicyUpdateTime = $activeSyncDeviceStatistics.LastPolicyUpdateTime
-						    $activeSyncDeviceData.DevicePolicyApplied = $activeSyncDeviceStatistics.DevicePolicyApplied
-						    $activeSyncDeviceData.DevicePolicyApplicationStatus = $activeSyncDeviceStatistics.DevicePolicyApplicationStatus
-						    $activeSyncDeviceData.Status = $activeSyncDeviceStatistics.Status
-						    $activeSyncDeviceData.StatusNote = $activeSyncDeviceStatistics.StatusNote
-						    $activeSyncDeviceData.IsRemoteWipeSupported = $activeSyncDeviceStatistics.IsRemoteWipeSupported
-						    $activeSyncDeviceData.DeviceWipeSentTime = $activeSyncDeviceStatistics.DeviceWipeSentTime
-						    $activeSyncDeviceData.DeviceWipeRequestTime = $activeSyncDeviceStatistics.DeviceWipeRequestTime
-						    $activeSyncDeviceData.DeviceWipeAckTime = $activeSyncDeviceStatistics.DeviceWipeAckTime
-					    }
-				    }
+                    if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData"){
+                        Write-Progress -activity "Exchange Data Export" -Status "Querying Device Stats $($activeSyncDeviceData.FriendlyName)" -percentComplete (60 + ($activeSyncDeviceCounter/$activeSyncDeviceCount)*38)
+                        $activeSyncDeviceStatistics = $activeSyncDevice | Get-ActiveSyncDeviceStatistics -WarningAction:silentlycontinue
+                        if ($activeSyncDeviceStatistics){
+                            $activeSyncDeviceData.FirstSyncTime = $activeSyncDeviceStatistics.FirstSyncTime
+                            $activeSyncDeviceData.LastPingHeartbeat = $activeSyncDeviceStatistics.LastPingHeartbeat
+                            $activeSyncDeviceData.LastSyncAttemptTime = $activeSyncDeviceStatistics.LastSyncAttemptTime
+                            $activeSyncDeviceData.LastSuccessSync = $activeSyncDeviceStatistics.LastSuccessSync
+                            $activeSyncDeviceData.LastPolicyUpdateTime = $activeSyncDeviceStatistics.LastPolicyUpdateTime
+                            $activeSyncDeviceData.DevicePolicyApplied = $activeSyncDeviceStatistics.DevicePolicyApplied
+                            $activeSyncDeviceData.DevicePolicyApplicationStatus = $activeSyncDeviceStatistics.DevicePolicyApplicationStatus
+                            $activeSyncDeviceData.Status = $activeSyncDeviceStatistics.Status
+                            $activeSyncDeviceData.StatusNote = $activeSyncDeviceStatistics.StatusNote
+                            $activeSyncDeviceData.IsRemoteWipeSupported = $activeSyncDeviceStatistics.IsRemoteWipeSupported
+                            $activeSyncDeviceData.DeviceWipeSentTime = $activeSyncDeviceStatistics.DeviceWipeSentTime
+                            $activeSyncDeviceData.DeviceWipeRequestTime = $activeSyncDeviceStatistics.DeviceWipeRequestTime
+                            $activeSyncDeviceData.DeviceWipeAckTime = $activeSyncDeviceStatistics.DeviceWipeAckTime
+                        }
+                    }
 
-				    if ($Verbose) {
-					    $activeDeviceUser = GetUserNameFromDeviceID -DeviceID $activeSyncDeviceData.Identity
-					    LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $activeSyncDeviceCounter, $activeDeviceUser,
-						    $activeSyncDeviceData.DeviceOS, $activeSyncDeviceData.LastSuccessSync))
-				    }
+                    if ($Verbose) {
+                        $activeDeviceUser = GetUserNameFromDeviceID -DeviceID $activeSyncDeviceData.Identity
+                        LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $activeSyncDeviceCounter, $activeDeviceUser,
+                            $activeSyncDeviceData.DeviceOS, $activeSyncDeviceData.LastSuccessSync))
+                    }
 
-				    $listActiveSyncDeviceData.Add($activeSyncDeviceData)
-				    $activeSyncDeviceCounter++
-			    }
+                    $listActiveSyncDeviceData.Add($activeSyncDeviceData)
+                    $activeSyncDeviceCounter++
+                }
 
-			    $listActiveSyncDeviceData | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
-		    }
+                $listActiveSyncDeviceData | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
+            }
         }
         else {
-			LogText "Exchange cmdlet Get-ActiveSyncDevice not found. Mobile device data not available" 
-		}
-	}
-	
-	if (($RequiredData -eq "AllData" -or $RequiredData -eq "CALData") -and (!($Office365)))
-	{
-		if (!$CALScriptVersion) {
-			if (Get-Command "Get-ExchangeServerAccessLicenseUser" -errorAction SilentlyContinue){
-				$CALScriptVersion = "2013"
-			}
-			elseif ($exchangeServers) {
-				$Version = $exchangeServers.AdminDisplayVersion
-				if ($Version -Like "Version 8*") {
-					$CALScriptVersion = "2007"
-				}
-				elseif ($Version -Like "Version 14.1*" -or
-						$Version -Like "Version 14.2*" -or
-						$Version -Like "Version 14.3*" ) {
-					$CALScriptVersion = "2010SP1"
-				}
-				elseif ($Version -Like "Version 14*") {
-					$CALScriptVersion = "2010"
-				}
-				else {
-					$CALScriptVersion = "2013"
-				}
-			}
-			else {
-				$CALScriptVersion = "2010"
-			}
-		}
-		
-		if ($Verbose) {
-			LogText "Running CAL script: Version $($CALScriptVersion)"
-		}
-		
-		if ($CALScriptVersion -eq "2007") {
-			& $scriptGetCALReqs2007
-		}
-		elseif ($CALScriptVersion -eq "2010") {
-			& $scriptGetCALReqs2010
-		}
-		elseif ($CALScriptVersion -eq "2010SP1") {
-			& $scriptGetCALReqs2010SP1
-		}
-		elseif ($CALScriptVersion -eq "2010SP3") {
-			& $scriptGetCALReqs2010SP3
-		}
-		else {
-			& $scriptGetCALReqs2013
-		}
-	}
+            LogText "Exchange cmdlet Get-ActiveSyncDevice not found. Mobile device data not available" 
+        }
+    }
+    
+    if (($RequiredData -eq "AllData" -or $RequiredData -eq "CALData") -and (!($Office365)))
+    {
+        if (!$CALScriptVersion) {
+            if (Get-Command "Get-ExchangeServerAccessLicenseUser" -errorAction SilentlyContinue){
+                $CALScriptVersion = "2013"
+            }
+            elseif ($exchangeServers) {
+                $Version = $exchangeServers.AdminDisplayVersion
+                if ($Version -Like "Version 8*") {
+                    $CALScriptVersion = "2007"
+                }
+                elseif ($Version -Like "Version 14.1*" -or
+                        $Version -Like "Version 14.2*" -or
+                        $Version -Like "Version 14.3*" ) {
+                    $CALScriptVersion = "2010SP1"
+                }
+                elseif ($Version -Like "Version 14*") {
+                    $CALScriptVersion = "2010"
+                }
+                else {
+                    $CALScriptVersion = "2013"
+                }
+            }
+            else {
+                $CALScriptVersion = "2010"
+            }
+        }
+        
+        if ($Verbose) {
+            LogText "Running CAL script: Version $($CALScriptVersion)"
+        }
+        
+        if ($CALScriptVersion -eq "2007") {
+            & $scriptGetCALReqs2007
+        }
+        elseif ($CALScriptVersion -eq "2010") {
+            & $scriptGetCALReqs2010
+        }
+        elseif ($CALScriptVersion -eq "2010SP1") {
+            & $scriptGetCALReqs2010SP1
+        }
+        elseif ($CALScriptVersion -eq "2010SP3") {
+            & $scriptGetCALReqs2010SP3
+        }
+        else {
+            & $scriptGetCALReqs2013
+        }
+    }
 
-	if ($exchangeSession) {
-		LogProgress -activity "Exchange Data Export" -Status "Cleaning Session" -percentComplete 98
-		Remove-PSSession -Session $exchangeSession}
-		
-	LogProgress -activity "Exchange Data Export" -complete -Status "Complete"
+    if ($exchangeSession) {
+        LogProgress -activity "Exchange Data Export" -Status "Cleaning Session" -percentComplete 98
+        Remove-PSSession -Session $exchangeSession}
+        
+    LogProgress -activity "Exchange Data Export" -complete -Status "Complete"
 }
 
 function GetUserNameFromDeviceID {
     param([string] $DeviceID = "")
 
-	$deviceIDParts = $DeviceID.Split("/\")
-	if ($deviceIDParts.length -eq 0){
-		return ""
-	}
+    $deviceIDParts = $DeviceID.Split("/\")
+    if ($deviceIDParts.length -eq 0){
+        return ""
+    }
 
-	$indexEASD = [array]::IndexOf($deviceIDParts, "ExchangeActiveSyncDevices")
-	if ($indexEASD -gt 0){
-		$nameParts = $deviceIDParts[$indexEASD - 1].Split("@")
-		if ($nameParts.Length -gt 0){
-			return $nameParts[0]
-		}
-	}
+    $indexEASD = [array]::IndexOf($deviceIDParts, "ExchangeActiveSyncDevices")
+    if ($indexEASD -gt 0){
+        $nameParts = $deviceIDParts[$indexEASD - 1].Split("@")
+        if ($nameParts.Length -gt 0){
+            return $nameParts[0]
+        }
+    }
 
-	return $deviceIDParts[0]
+    return $deviceIDParts[0]
 }
 
 
@@ -617,21 +617,21 @@ function Output-Report {
     LogText "Total Users:                                    $TotalMailboxes" 
     LogText "Total Standard CALs:                            $TotalStandardCALs" 
     LogText "Total Enterprise CALs:                          $TotalEnterpriseCALs" 
-	
-	$calReport = New-Object -TypeName System.Object
-	$calReport | Add-Member -MemberType NoteProperty -Name TotalMailboxes -Value $TotalMailboxes
-	$calReport | Add-Member -MemberType NoteProperty -Name TotalStandardCALs -Value $TotalStandardCALs
-	$calReport | Add-Member -MemberType NoteProperty -Name TotalEnterpriseCALs -Value $TotalEnterpriseCALs
-	$calReport | Add-Member -MemberType NoteProperty -Name UnifiedMessagingUserCount -Value $UMUserCount 
-	$calReport | Add-Member -MemberType NoteProperty -Name ManagedCustomFolderUserCount -Value $ManagedCustomFolderUserCount 
-	$calReport | Add-Member -MemberType NoteProperty -Name AdvancedActiveSyncPolicyUserCount -Value $AdvancedActiveSyncUserCount 
-	$calReport | Add-Member -MemberType NoteProperty -Name ArchivedMailboxUserCount -Value $ArchiveUserCount 
-	$calReport | Add-Member -MemberType NoteProperty -Name RetentionPolicyUserCount -Value $RetentionPolicyUserCount
-	$calReport | Add-Member -MemberType NoteProperty -Name SearchableUserCount -Value $SearchableMaiboxIDs.Count
-	$calReport | Add-Member -MemberType NoteProperty -Name JournalingUserCount -Value $JournalingUserCount
-	$calReport | Add-Member -MemberType NoteProperty -Name InfoLeakageProtectionEnabled -Value $InfoLeakageProtectionEnabled
-	$calReport | Add-Member -MemberType NoteProperty -Name AdvancedAntispamEnabled -Value $AdvancedAntispamEnabled
-	$calReport | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
+    
+    $calReport = New-Object -TypeName System.Object
+    $calReport | Add-Member -MemberType NoteProperty -Name TotalMailboxes -Value $TotalMailboxes
+    $calReport | Add-Member -MemberType NoteProperty -Name TotalStandardCALs -Value $TotalStandardCALs
+    $calReport | Add-Member -MemberType NoteProperty -Name TotalEnterpriseCALs -Value $TotalEnterpriseCALs
+    $calReport | Add-Member -MemberType NoteProperty -Name UnifiedMessagingUserCount -Value $UMUserCount 
+    $calReport | Add-Member -MemberType NoteProperty -Name ManagedCustomFolderUserCount -Value $ManagedCustomFolderUserCount 
+    $calReport | Add-Member -MemberType NoteProperty -Name AdvancedActiveSyncPolicyUserCount -Value $AdvancedActiveSyncUserCount 
+    $calReport | Add-Member -MemberType NoteProperty -Name ArchivedMailboxUserCount -Value $ArchiveUserCount 
+    $calReport | Add-Member -MemberType NoteProperty -Name RetentionPolicyUserCount -Value $RetentionPolicyUserCount
+    $calReport | Add-Member -MemberType NoteProperty -Name SearchableUserCount -Value $SearchableMaiboxIDs.Count
+    $calReport | Add-Member -MemberType NoteProperty -Name JournalingUserCount -Value $JournalingUserCount
+    $calReport | Add-Member -MemberType NoteProperty -Name InfoLeakageProtectionEnabled -Value $InfoLeakageProtectionEnabled
+    $calReport | Add-Member -MemberType NoteProperty -Name AdvancedAntispamEnabled -Value $AdvancedAntispamEnabled
+    $calReport | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
 } 
 
 $scriptGetCALReqs2007 = 
@@ -642,9 +642,9 @@ trap {
     LogText $_ 
  
     $Global:AdminSessionADSettings.DefaultScope = $OriginalDefaultScope 
- 	
-	LogLastException
-	
+    
+    LogLastException
+    
     exit 
 }  
  
@@ -1099,8 +1099,8 @@ trap {
  
     Set-ADServerSettings -ViewEntireForest $OriginalADServerSetting.ViewEntireForest -RecipientViewRoot $OriginalADServerSetting.RecipientViewRoot 
  
- 	LogLastException
-	
+    LogLastException
+    
     exit 
 }  
  
@@ -1315,8 +1315,8 @@ Get-TransportRule | foreach {
  
             LogText "" 
         } 
-		
-		$InfoLeakageProtectionEnabled = $true
+        
+        $InfoLeakageProtectionEnabled = $true
  
         # All mailboxes are counted as Enterprise CALs, report and exit. 
         Output-Counts 
@@ -1689,8 +1689,8 @@ trap {
  
     Set-ADServerSettings -ViewEntireForest $OriginalADServerSetting.ViewEntireForest -RecipientViewRoot $OriginalADServerSetting.RecipientViewRoot 
  
- 	LogLastException
-	
+    LogLastException
+    
     exit 
 }  
  
@@ -1810,7 +1810,7 @@ function Merge-Hashtables
 Get-Recipient -ResultSize 'Unlimited' -Filter $UserMailboxFilter | foreach { 
     $Mailbox = $_ 
     #if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) { 
-	if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) { 
+    if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) { 
         $AllMailboxIDs[$Mailbox.Identity] = $null 
         $TotalMailboxes++ 
     } 
@@ -1852,8 +1852,8 @@ Get-TransportRule | foreach {
  
             LogText "" 
         } 
-		
-		$InfoLeakageProtectionEnabled = $true
+        
+        $InfoLeakageProtectionEnabled = $true
  
         # All mailboxes are counted as Enterprise CALs, report and exit. 
         Output-Counts 
@@ -2018,84 +2018,84 @@ if ($EnableProgressOutput -eq $True) {
 $ExcludedMailboxes = @{} 
 $ManagementScopes = @{}
 if (Get-Command "Get-ManagementRole" -errorAction SilentlyContinue){
-	("*-mailboxsearch") | %{Get-ManagementRole -cmdlet $_} | Sort-Object -Unique | %{$DiscoveryConsoleRoles[$_.Identity] = $_}
-	
-	# Get all e-discovery management role assigment on users 
-	foreach ($Role in $DiscoveryConsoleRoles.Values) { 
-	    foreach ($RoleAssignment in @($Role | Get-ManagementRoleAssignment -Delegating $false -Enabled $true)) { 
-	        $EffectiveAssignees=@() 
-	        foreach ($EffectiveUserRoleAssignment in (Get-ManagementRoleAssignment -Identity $RoleAssignment.Identity -GetEffectiveUsers)) { 
-	            $EffectiveAssignees+=$EffectiveUserRoleAssignment.User 
-	        } 
-	        foreach ($EffectiveAssignee in $EffectiveAssignees) { 
-	            $Assignee = Get-User $EffectiveAssignee -ErrorAction SilentlyContinue 
-	            $error.Clear() 
-	            if ($Assignee -ne $null) { 
-	                $DiscoveryConsoleRoleAssignees += $Assignee 
-	                $DiscoveryConsoleRoleAssignments += $RoleAssignment 
-	             } 
-	        } 
-	    } 
-	}
-	
-	# Get excluded mailboxes 
-	Get-ManagementScope -Exclusive:$true | where {$_.ScopeRestrictionType -eq "RecipientScope"} | foreach { 
-	    $ManagementScopes[$_.Identity] = $_ 
-	    [Microsoft.Exchange.Management.Tasks.GetManagementScope]::StampQueryFilterOnManagementScope($_) 
-	} 
-	foreach ($ManagementScope in $ManagementScopes.Values) { 
-	    $Filter = $UserMailboxFilter 
-	    if (-not([System.String]::IsNullOrEmpty($ManagementScope.RecipientFilter))) { 
-	        $Filter = "(" + $ManagementScope.RecipientFilter + ") -and (" + $Filter + ")" 
-	    } 
-	    Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ManagementScope.RecipientRoot -Filter $Filter | foreach { 
-	        if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
-	            $ExcludedMailboxes[$_.Identity] = $true 
-	        } 
-	    } 
-	} 
-	 
-	# Get all searched mailboxes in e-discovery 
-	for ($i=0; $i -lt $DiscoveryConsoleRoleAssignments.Count; $i++) { 
-	    $RoleAssignment=$DiscoveryConsoleRoleAssignments[$i] 
-	    $ManagementScope = $null 
-	    if (($RoleAssignment.CustomRecipientWriteScope -ne $null) -and ($RoleAssignment.RecipientWriteScope -eq "CustomRecipientScope" -or $RoleAssignment.RecipientWriteScope -eq "ExclusiveRecipientScope")) { 
-	        $ManagementScope = $ManagementScopes[$RoleAssignment.CustomRecipientWriteScope] 
-	        if ($ManagementScope -eq $null) { 
-	            $ManagementScope = Get-ManagementScope $RoleAssignment.CustomRecipientWriteScope 
-	            [Microsoft.Exchange.Management.Tasks.GetManagementScope]::StampQueryFilterOnManagementScope($ManagementScope) 
-	            $ManagementScopes[$RoleAssignment.CustomRecipientWriteScope] = $ManagementScope 
-	        } 
-	    } 
-	    $ADScope = [Microsoft.Exchange.Management.RbacTasks.GetManagementRoleAssignment]::GetRecipientWriteADScope( 
-	        $RoleAssignment,  
-	        $DiscoveryConsoleRoleAssignees[$i],  
-	        $ManagementScope) 
-	    if ($ADScope -ne $null) { 
-	        $Filter = $UserMailboxFilter 
-	        $ScopeFilter = $ADScope.GetFilterString() 
-	        if (-not([System.String]::IsNullOrEmpty($ScopeFilter))) { 
-	            $Filter = "(" + $ScopeFilter + ") -and (" + $Filter + ")" 
-	        } 
-	        Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ADScope.Root -Filter $Filter | foreach { 
-	            if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
-	                if ($RoleAssignment.RecipientWriteScope -eq [Microsoft.Exchange.Data.Directory.SystemConfiguration.RecipientWriteScopeType]::ExclusiveRecipientScope) { 
-	                    $EnterpriseCALMailboxIDs[$_.Identity] = $null 
-	                    $SearchableMaiboxIDs[$_.Identity] = $null 
-	                } 
-	                else { 
-	                    if (-not($ExcludedMailboxes[$_.Identity] -eq $true)) { 
-	                        $EnterpriseCALMailboxIDs[$_.Identity] = $null 
-	                        $SearchableMaiboxIDs[$_.Identity] = $null 
-	                    } 
-	                } 
-	            } 
-	        } 
-	    } 
-	} 
+    ("*-mailboxsearch") | %{Get-ManagementRole -cmdlet $_} | Sort-Object -Unique | %{$DiscoveryConsoleRoles[$_.Identity] = $_}
+    
+    # Get all e-discovery management role assigment on users 
+    foreach ($Role in $DiscoveryConsoleRoles.Values) { 
+        foreach ($RoleAssignment in @($Role | Get-ManagementRoleAssignment -Delegating $false -Enabled $true)) { 
+            $EffectiveAssignees=@() 
+            foreach ($EffectiveUserRoleAssignment in (Get-ManagementRoleAssignment -Identity $RoleAssignment.Identity -GetEffectiveUsers)) { 
+                $EffectiveAssignees+=$EffectiveUserRoleAssignment.User 
+            } 
+            foreach ($EffectiveAssignee in $EffectiveAssignees) { 
+                $Assignee = Get-User $EffectiveAssignee -ErrorAction SilentlyContinue 
+                $error.Clear() 
+                if ($Assignee -ne $null) { 
+                    $DiscoveryConsoleRoleAssignees += $Assignee 
+                    $DiscoveryConsoleRoleAssignments += $RoleAssignment 
+                 } 
+            } 
+        } 
+    }
+    
+    # Get excluded mailboxes 
+    Get-ManagementScope -Exclusive:$true | where {$_.ScopeRestrictionType -eq "RecipientScope"} | foreach { 
+        $ManagementScopes[$_.Identity] = $_ 
+        [Microsoft.Exchange.Management.Tasks.GetManagementScope]::StampQueryFilterOnManagementScope($_) 
+    } 
+    foreach ($ManagementScope in $ManagementScopes.Values) { 
+        $Filter = $UserMailboxFilter 
+        if (-not([System.String]::IsNullOrEmpty($ManagementScope.RecipientFilter))) { 
+            $Filter = "(" + $ManagementScope.RecipientFilter + ") -and (" + $Filter + ")" 
+        } 
+        Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ManagementScope.RecipientRoot -Filter $Filter | foreach { 
+            if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
+                $ExcludedMailboxes[$_.Identity] = $true 
+            } 
+        } 
+    } 
+     
+    # Get all searched mailboxes in e-discovery 
+    for ($i=0; $i -lt $DiscoveryConsoleRoleAssignments.Count; $i++) { 
+        $RoleAssignment=$DiscoveryConsoleRoleAssignments[$i] 
+        $ManagementScope = $null 
+        if (($RoleAssignment.CustomRecipientWriteScope -ne $null) -and ($RoleAssignment.RecipientWriteScope -eq "CustomRecipientScope" -or $RoleAssignment.RecipientWriteScope -eq "ExclusiveRecipientScope")) { 
+            $ManagementScope = $ManagementScopes[$RoleAssignment.CustomRecipientWriteScope] 
+            if ($ManagementScope -eq $null) { 
+                $ManagementScope = Get-ManagementScope $RoleAssignment.CustomRecipientWriteScope 
+                [Microsoft.Exchange.Management.Tasks.GetManagementScope]::StampQueryFilterOnManagementScope($ManagementScope) 
+                $ManagementScopes[$RoleAssignment.CustomRecipientWriteScope] = $ManagementScope 
+            } 
+        } 
+        $ADScope = [Microsoft.Exchange.Management.RbacTasks.GetManagementRoleAssignment]::GetRecipientWriteADScope( 
+            $RoleAssignment,  
+            $DiscoveryConsoleRoleAssignees[$i],  
+            $ManagementScope) 
+        if ($ADScope -ne $null) { 
+            $Filter = $UserMailboxFilter 
+            $ScopeFilter = $ADScope.GetFilterString() 
+            if (-not([System.String]::IsNullOrEmpty($ScopeFilter))) { 
+                $Filter = "(" + $ScopeFilter + ") -and (" + $Filter + ")" 
+            } 
+            Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ADScope.Root -Filter $Filter | foreach { 
+                if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
+                    if ($RoleAssignment.RecipientWriteScope -eq [Microsoft.Exchange.Data.Directory.SystemConfiguration.RecipientWriteScopeType]::ExclusiveRecipientScope) { 
+                        $EnterpriseCALMailboxIDs[$_.Identity] = $null 
+                        $SearchableMaiboxIDs[$_.Identity] = $null 
+                    } 
+                    else { 
+                        if (-not($ExcludedMailboxes[$_.Identity] -eq $true)) { 
+                            $EnterpriseCALMailboxIDs[$_.Identity] = $null 
+                            $SearchableMaiboxIDs[$_.Identity] = $null 
+                        } 
+                    } 
+                } 
+            } 
+        } 
+    } 
 }
 else {
-	 LogText "Warning: Get-ManagementRole cmdlet not available. E-discovery management roles not analysed"
+     LogText "Warning: Get-ManagementRole cmdlet not available. E-discovery management roles not analysed"
 }
  
 ## Progress output ...... 
@@ -2293,8 +2293,8 @@ trap {
  
     Set-ADServerSettings -ViewEntireForest $OriginalADServerSetting.ViewEntireForest -RecipientViewRoot $OriginalADServerSetting.RecipientViewRoot 
  
- 	LogLastException
-	
+    LogLastException
+    
     exit 
 }  
  
@@ -2474,8 +2474,8 @@ Get-TransportRule | foreach {
  
             LogText "" 
         }
-		
-		$InfoLeakageProtectionEnabled = $true
+        
+        $InfoLeakageProtectionEnabled = $true
  
         # All mailboxes are counted as Enterprise CALs, report and exit. 
         Output-Counts 
@@ -2874,27 +2874,27 @@ Set-ADServerSettings -ViewEntireForest $OriginalADServerSetting.ViewEntireForest
 
 $scriptGetCALReqs2013 = 
 {
-	$TotalStandardCALs = Get-ExchangeServerAccessLicenseUser -LicenseName (Get-ExchangeServerAccessLicense | ? {($_.UnitLabel -eq "CAL") -and ($_.LicenseName -like "*Standard*")}).licenseName | measure | select Count
+    $TotalStandardCALs = Get-ExchangeServerAccessLicenseUser -LicenseName (Get-ExchangeServerAccessLicense | ? {($_.UnitLabel -eq "CAL") -and ($_.LicenseName -like "*Standard*")}).licenseName | measure | select Count
     $TotalEnterpriseCALs = Get-ExchangeServerAccessLicenseUser -LicenseName (Get-ExchangeServerAccessLicense | ? {($_.UnitLabel -eq "CAL") -and ($_.LicenseName -like "*Enterprise*")}).licenseName | measure | select Count
-	Output-Report
+    Output-Report
 
-	$ExchangeLicenses = @()
-	$ExchangeLicenseTypes = Get-ExchangeServerAccessLicense
-	foreach ($ExchangeLicenseType in $ExchangeLicenseTypes){
-		$ExchangeLicenses += Get-ExchangeServerAccessLicenseUser -LicenseName $ExchangeLicenseType.LicenseName 
-	}
+    $ExchangeLicenses = @()
+    $ExchangeLicenseTypes = Get-ExchangeServerAccessLicense
+    foreach ($ExchangeLicenseType in $ExchangeLicenseTypes){
+        $ExchangeLicenses += Get-ExchangeServerAccessLicenseUser -LicenseName $ExchangeLicenseType.LicenseName 
+    }
 
-	if ($ExchangeLicenses){
-		$ExchangeLicenses | export-csv $OutputFile5 -notypeinformation -Encoding UTF8
-	}
+    if ($ExchangeLicenses){
+        $ExchangeLicenses | export-csv $OutputFile5 -notypeinformation -Encoding UTF8
+    }
 }
 
 
 try {
-	Get-ExchangeDetails
+    Get-ExchangeDetails
 }
 catch {
-	LogLastException
+    LogLastException
 }
 
 
