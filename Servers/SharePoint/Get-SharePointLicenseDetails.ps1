@@ -10,8 +10,6 @@
 	$Password,
 	[alias("server")]
     $SharePointServer,
-	[switch]
-	$Headless = $false,
     [alias("o1")]
     $OutputFile1 = "SharePointSites.csv",
 	[alias("o2")]
@@ -19,7 +17,9 @@
 	[alias("log")]
 	[string] $LogFile = "SPLogFile.txt",
 	[switch]
-	$Verbose = $true
+	$Verbose = $false,
+    [switch]
+	$Headless = $false
 )
 
 function InitialiseLogFile {
@@ -168,7 +168,33 @@ function LogEnvironmentDetails {
     LogText -Color Gray "Output File 2:        $OutputFile2"
 	LogText -Color Gray "Log File:             $LogFile"
     LogText -Color Gray "Verbose:              $Verbose"
+    LogText -Color Gray "Headless:             $Headless"
 	LogText -Color Gray ""
+}
+
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
 }
 
 function SearchAD ($searchFilter, [string[]]$searchAttributes, [switch]$useNamingContext){
@@ -389,6 +415,7 @@ function Get-SharePointLicenseDetails {
 	try {
 		InitialiseLogFile
 		LogEnvironmentDetails
+        SetupDateFormats
 
 		if (!$SharePointServer) {
 			# Target server was not specified on the command line. Query user.
@@ -898,7 +925,7 @@ function QuerySharePointInfo {
 		    }
 		}
 
-        LogProgress "Updating permissionf for user $Username"
+        LogProgress "Updating permissions for user $Username"
         Get-SPDatabase | Add-SPShellAdmin $Username
 
 		## Global group lists
