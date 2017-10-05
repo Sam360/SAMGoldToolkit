@@ -10,10 +10,10 @@
 
  <#
 .SYNOPSIS
-Retrieves Exchange server, mail box, ActiveSync device and CAL information from an Exchange server
+Retrieves Exchange server, mail box, ActiveSync device and CAL information from an Exchange Server
 
 .DESCRIPTION
-The Get-ExchangeDetails script queries a single Exchange server and produces up to 5 CSV files
+The Get-ExchangeDetails script queries a single Exchange Server and produces up to 5 CSV files
 	1)    ExchangeServerDetails.csv - One record per Exchange Server in the farm
 	2)    ExchangeMailBoxes.csv - One record per MailBox
 	3)    ExchangeDevices.csv - One record per ActiveSync device
@@ -77,15 +77,17 @@ try
 	[switch]
 	$Office365,
 	[switch]
-	$Verbose,
-	[switch]
 	$UseSSL,
 	[ValidateSet("2007","2010","2010SP1","2010SP3","2013")]
 	$CALScriptVersion,
 	[ValidateSet("AllData","ServerData","EntityData","UtilizationData","CALData")] 
 	$RequiredData = "AllData",
 	[ValidateSet("Both","RemoteSession","SnapIn")] 
-	$ConnectionMethod = "Both")
+	$ConnectionMethod = "Both",
+    [switch]
+	$Verbose = $false,
+    [switch]
+	$Headless = $false)
 
 function InitialiseLogFile {
 	if ($LogFile -and (Test-Path $LogFile)) {
@@ -154,6 +156,52 @@ function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete
 	$output += $Status
 	LogText $output -Color Green
 }
+
+function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){
+	$strResult = ""
+	
+	if ($Message) {
+		LogText $Message -color Yellow
+	}
+
+	if ($DefaultValue) {
+		$Prompt += " (Default [$DefaultValue])"
+	}
+
+	$Prompt += ": "
+	LogText $Prompt -color Yellow -NoNewLine
+	
+	if ($Headless) {
+		LogText " (Headless - Using Default Value)" -color Yellow
+	}
+	else {
+		$strResult = Read-Host -AsSecureString:$AsSecureString
+	}
+
+	if(!$strResult) {
+		$strResult = $DefaultValue
+		if ($AsSecureString) {
+			$strResult = ConvertTo-SecureString $strResult -AsPlainText -Force
+		}
+	}
+
+	return $strResult
+}
+
+function Get-ConsoleCredential([String] $Message, [String] $DefaultUsername)
+{
+	$strUsername = QueryUser -Message $Message -Prompt "Username" -DefaultValue $DefaultUsername
+	if (!$strUsername){
+		return $null
+	}
+
+	$strSecurePassword = QueryUser -Prompt "Password" -AsSecureString
+	if (!$strSecurePassword){
+		return $null
+	}
+
+	return new-object Management.Automation.PSCredential $strUsername, $strSecurePassword
+}
                                                                           
 function LogEnvironmentDetails {
 	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
@@ -186,7 +234,34 @@ function LogEnvironmentDetails {
 	LogText -Color Gray "Output File 4:        $OutputFile4"
 	LogText -Color Gray "Output File 5:        $OutputFile5"
 	LogText -Color Gray "Log File:             $LogFile"
+    LogText -Color Gray "Verbose:              $Verbose"
+    LogText -Color Gray "Headless:             $Headless"
 	LogText -Color Gray ""
+}
+
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
 }
 
 function EnvironmentConfigured {
@@ -216,54 +291,51 @@ function Get-ExchangeDetails {
 	InitialiseLogFile
 	LogProgress -Activity "Exchange Data Export" -Status "Logging environment details" -percentComplete 1
 	LogEnvironmentDetails
+    SetupDateFormats
 
-	if (!($ExchangeServer) -and !($Office365))
+	if (($ConnectionMethod -eq "Both") -or ($ConnectionMethod -eq "RemoteSession") -or $Office365)
 	{
-		$strPrompt = "Exchange Server Name (Default [$($env:computerName)])"
-		$ExchangeServer = Read-Host -Prompt $strPrompt
-		if (!($ExchangeServer))
-		{
-			$ExchangeServer = $env:computerName
-		}
-	}
+        if (!($ExchangeServer) -and !($Office365))
+	    {
+		    # Target server was not specified on the command line. Query user.
+		    $ExchangeServer = QueryUser -Prompt "Exchange Server" -DefaultValue "$($env:computerName)"
+	    }
 
-	# Create the Credentials object if username has been provided
-	LogProgress -activity "Exchange Data Export" -Status "Exchange Server Administrator Credentials Required" -percentComplete 2
-	if(!($UserName -and $Password)){
-		$exchangeCreds = Get-Credential
-	}
-	else 
-	{
-		$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
-		$exchangeCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
-	}
+        # Create the Credentials object if username has been provided
+	    LogProgress -activity "Exchange Data Export" -Status "Exchange Server Administrator Credentials Required" -percentComplete 2
+	    if(!($UserName -and $Password)){
+		    $exchangeCreds = Get-ConsoleCredential -Message "Exchange Server Credentials Required" -DefaultUsername $UserName
+	    }
+	    else 
+	    {
+		    $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+		    $exchangeCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
+	    }
 
-	# Connect to exchange server
-	LogProgress -activity "Exchange Data Export" -Status "Connecting..." -percentComplete 3
-	if ($Office365)
-	{
-		$connectionUri = "https://ps.outlook.com/powershell/"
-		$authenticationType = "Basic"
-	}
-	else
-	{
-		$connectionUri = "http://"
-		if ($UseSSL) {
-			$connectionUri = "https://"
-		}
-		$connectionUri += $ExchangeServer + "/powershell/"
-		$authenticationType = "Kerberos"
-	}
+	    # Connect to exchange server
+	    LogProgress -activity "Exchange Data Export" -Status "Connecting..." -percentComplete 3
+	    if ($Office365)
+	    {
+		    $connectionUri = "https://ps.outlook.com/powershell/"
+		    $authenticationType = "Basic"
+	    }
+	    else
+	    {
+		    $connectionUri = "http://"
+		    if ($UseSSL) {
+			    $connectionUri = "https://"
+		    }
+		    $connectionUri += $ExchangeServer + "/powershell/"
+		    $authenticationType = "Kerberos"
+	    }
 	
-	if ($Verbose)
-	{
-		LogText "ConnectionUri: $connectionUri"
-		LogText "AuthenticationType: $authenticationType"
-		LogText "UserName: $($exchangeCreds.UserName)"
-	}
-	
-	if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "RemoteSession")
-	{
+	    if ($Verbose)
+	    {
+		    LogText "ConnectionUri: $connectionUri"
+		    LogText "AuthenticationType: $authenticationType"
+		    LogText "UserName: $($exchangeCreds.UserName)"
+	    }
+
 		if ($exchangeCreds)
 		{
 			$exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri $connectionUri -Authentication $authenticationType -AllowRedirection -Credential $exchangeCreds -WarningAction:silentlycontinue
@@ -312,7 +384,10 @@ function Get-ExchangeDetails {
 	
 	if (!(EnvironmentConfigured))
 	{
-		LogError "Unable to configure Powershell Exchange environment"
+		LogError ("The script was unable to connect to Exchange server", 
+					"To maximise the chance of connectivity, please",
+					"   1) Ensure that the Exchange PowerShell Module is installed on this device and/or",
+					"   2) Execute this script on the Exchange server")
 		exit
 	}   
 
@@ -352,9 +427,28 @@ function Get-ExchangeDetails {
 			foreach ($mailBox in $mailBoxes) {
 				
 				$mailBoxData = $mailBox | select -Property UserPrincipalName, SamAccountName, DisplayName, 
-					WindowsLiveID, ExchangeGuid, PrimarySmtpAddress, ExternalDirectoryObjectId, EmailAddresses, 
+					WindowsLiveID, ExchangeGuid, PrimarySmtpAddress, ExternalDirectoryObjectId, 
 					DistinguishedName, Guid, RecipientType, IsMailboxEnabled, WhenMailboxCreated, WhenCreatedUTC, 
-					WhenChangedUTC, LastLogonTime, LastLogoffTime, ProtocolSettings
+					WhenChangedUTC, ServerName, Office, ExchangeVersion, ObjectCategory, 
+                    @{n='EmailAddresses';e={($_ | select -expand EmailAddresses) -join ", "}}, 
+                    @{n='ProtocolSettings';e={($_ | select -expand ProtocolSettings) -join ", "}},
+                    LastLogonTime, LastLogoffTime, # MailboxStatistics details
+                    ActiveSyncMailboxPolicy, ActiveSyncEnabled, OwaMailboxPolicy, OWAEnabled, #CASMailbox details
+                    ECPEnabled, EmwsEnabled, PopEnabled, ImapEnabled, MAPIEnabled, EwsEnabled #CASMailbox details
+                
+                $CASMailbox = Get-CASMailbox $mailBox.Identity
+                if ($CASMailbox) {
+                    $mailBoxData.ActiveSyncMailboxPolicy = $CASMailbox.ActiveSyncMailboxPolicy
+                    $mailBoxData.ActiveSyncEnabled = $CASMailbox.ActiveSyncEnabled
+                    $mailBoxData.OwaMailboxPolicy = $CASMailbox.OwaMailboxPolicy
+                    $mailBoxData.OWAEnabled = $CASMailbox.OWAEnabled
+                    $mailBoxData.ECPEnabled = $CASMailbox.ECPEnabled
+                    $mailBoxData.EmwsEnabled = $CASMailbox.EmwsEnabled
+                    $mailBoxData.PopEnabled = $CASMailbox.PopEnabled
+                    $mailBoxData.ImapEnabled = $CASMailbox.ImapEnabled
+                    $mailBoxData.MAPIEnabled = $CASMailbox.MAPIEnabled
+                    $mailBoxData.EwsEnabled = $CASMailbox.EwsEnabled
+                }
 
 				if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")
 				{
@@ -377,59 +471,64 @@ function Get-ExchangeDetails {
 		
 		#Get Device details
 		LogProgress -activity "Exchange Data Export" -Status "Querying Device Data" -percentComplete 60
-		$activeSyncDevices = Get-ActiveSyncDevice -ResultSize 'Unlimited' -WarningAction:silentlycontinue 
-		if ($activeSyncDevices)
-		{
-            $activeSyncDeviceCount = CountItems($activeSyncDevices)
+        if (Get-Command "Get-ActiveSyncDevice" -errorAction SilentlyContinue) {
+		    $activeSyncDevices = Get-ActiveSyncDevice -ResultSize 'Unlimited' -WarningAction:silentlycontinue 
+		    if ($activeSyncDevices)
+		    {
+                $activeSyncDeviceCount = CountItems($activeSyncDevices)
 
-			if ($Verbose) {
-				LogText "Device Count: $activeSyncDeviceCount"
-				LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}","Count","User","DeviceOS","LastSuccessSync"))
-			}
+			    if ($Verbose) {
+				    LogText "Device Count: $activeSyncDeviceCount"
+				    LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}","Count","User","DeviceOS","LastSuccessSync"))
+			    }
 
-			$listActiveSyncDeviceData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
-			$activeSyncDeviceCounter = 1
+			    $listActiveSyncDeviceData = New-Object System.Collections.Generic.List[System.Management.Automation.PSObject]
+			    $activeSyncDeviceCounter = 1
 
-			foreach ($activeSyncDevice in $activeSyncDevices) {
+			    foreach ($activeSyncDevice in $activeSyncDevices) {
 				
-				$activeSyncDeviceData = $activeSyncDevice | select -Property Identity, FriendlyName, Name, 
-					DeviceId, Guid, DeviceImei, DeviceTelephoneNumber, DeviceMobileOperator, DeviceOS, DeviceOSLanguage, 
-					DeviceType, DeviceUserAgent, DeviceModel, UserDisplayName, OrganizationId, DeviceActiveSyncVersion, 
-					FirstSyncTime, WhenCreatedUTC, WhenChangedUTC, LastPingHeartbeat, LastSyncAttemptTime, LastSuccessSync, 
-					LastPolicyUpdateTime, DevicePolicyApplied, DevicePolicyApplicationStatus, Status, StatusNote, 
-					IsRemoteWipeSupported, DeviceWipeSentTime, DeviceWipeRequestTime, DeviceWipeAckTime
+				    $activeSyncDeviceData = $activeSyncDevice | select -Property Identity, FriendlyName, Name, 
+					    DeviceId, Guid, DeviceImei, DeviceTelephoneNumber, DeviceMobileOperator, DeviceOS, DeviceOSLanguage, 
+					    DeviceType, DeviceUserAgent, DeviceModel, UserDisplayName, OrganizationId, DeviceActiveSyncVersion, 
+					    FirstSyncTime, WhenCreatedUTC, WhenChangedUTC, LastPingHeartbeat, LastSyncAttemptTime, LastSuccessSync, 
+					    LastPolicyUpdateTime, DevicePolicyApplied, DevicePolicyApplicationStatus, Status, StatusNote, 
+					    IsRemoteWipeSupported, DeviceWipeSentTime, DeviceWipeRequestTime, DeviceWipeAckTime
 
-				if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData"){
-					Write-Progress -activity "Exchange Data Export" -Status "Querying Device Stats $($activeSyncDeviceData.FriendlyName)" -percentComplete (60 + ($activeSyncDeviceCounter/$activeSyncDeviceCount)*38)
-					$activeSyncDeviceStatistics = $activeSyncDevice | Get-ActiveSyncDeviceStatistics -WarningAction:silentlycontinue
-					if ($activeSyncDeviceStatistics){
-						$activeSyncDeviceData.FirstSyncTime = $activeSyncDeviceStatistics.FirstSyncTime
-						$activeSyncDeviceData.LastPingHeartbeat = $activeSyncDeviceStatistics.LastPingHeartbeat
-						$activeSyncDeviceData.LastSyncAttemptTime = $activeSyncDeviceStatistics.LastSyncAttemptTime
-						$activeSyncDeviceData.LastSuccessSync = $activeSyncDeviceStatistics.LastSuccessSync
-						$activeSyncDeviceData.LastPolicyUpdateTime = $activeSyncDeviceStatistics.LastPolicyUpdateTime
-						$activeSyncDeviceData.DevicePolicyApplied = $activeSyncDeviceStatistics.DevicePolicyApplied
-						$activeSyncDeviceData.DevicePolicyApplicationStatus = $activeSyncDeviceStatistics.DevicePolicyApplicationStatus
-						$activeSyncDeviceData.Status = $activeSyncDeviceStatistics.Status
-						$activeSyncDeviceData.StatusNote = $activeSyncDeviceStatistics.StatusNote
-						$activeSyncDeviceData.IsRemoteWipeSupported = $activeSyncDeviceStatistics.IsRemoteWipeSupported
-						$activeSyncDeviceData.DeviceWipeSentTime = $activeSyncDeviceStatistics.DeviceWipeSentTime
-						$activeSyncDeviceData.DeviceWipeRequestTime = $activeSyncDeviceStatistics.DeviceWipeRequestTime
-						$activeSyncDeviceData.DeviceWipeAckTime = $activeSyncDeviceStatistics.DeviceWipeAckTime
-					}
-				}
+				    if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData"){
+					    Write-Progress -activity "Exchange Data Export" -Status "Querying Device Stats $($activeSyncDeviceData.FriendlyName)" -percentComplete (60 + ($activeSyncDeviceCounter/$activeSyncDeviceCount)*38)
+					    $activeSyncDeviceStatistics = $activeSyncDevice | Get-ActiveSyncDeviceStatistics -WarningAction:silentlycontinue
+					    if ($activeSyncDeviceStatistics){
+						    $activeSyncDeviceData.FirstSyncTime = $activeSyncDeviceStatistics.FirstSyncTime
+						    $activeSyncDeviceData.LastPingHeartbeat = $activeSyncDeviceStatistics.LastPingHeartbeat
+						    $activeSyncDeviceData.LastSyncAttemptTime = $activeSyncDeviceStatistics.LastSyncAttemptTime
+						    $activeSyncDeviceData.LastSuccessSync = $activeSyncDeviceStatistics.LastSuccessSync
+						    $activeSyncDeviceData.LastPolicyUpdateTime = $activeSyncDeviceStatistics.LastPolicyUpdateTime
+						    $activeSyncDeviceData.DevicePolicyApplied = $activeSyncDeviceStatistics.DevicePolicyApplied
+						    $activeSyncDeviceData.DevicePolicyApplicationStatus = $activeSyncDeviceStatistics.DevicePolicyApplicationStatus
+						    $activeSyncDeviceData.Status = $activeSyncDeviceStatistics.Status
+						    $activeSyncDeviceData.StatusNote = $activeSyncDeviceStatistics.StatusNote
+						    $activeSyncDeviceData.IsRemoteWipeSupported = $activeSyncDeviceStatistics.IsRemoteWipeSupported
+						    $activeSyncDeviceData.DeviceWipeSentTime = $activeSyncDeviceStatistics.DeviceWipeSentTime
+						    $activeSyncDeviceData.DeviceWipeRequestTime = $activeSyncDeviceStatistics.DeviceWipeRequestTime
+						    $activeSyncDeviceData.DeviceWipeAckTime = $activeSyncDeviceStatistics.DeviceWipeAckTime
+					    }
+				    }
 
-				if ($Verbose) {
-					$activeDeviceUser = GetUserNameFromDeviceID -DeviceID $activeSyncDeviceData.Identity
-					LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $activeSyncDeviceCounter, $activeDeviceUser,
-						$activeSyncDeviceData.DeviceOS, $activeSyncDeviceData.LastSuccessSync))
-				}
+				    if ($Verbose) {
+					    $activeDeviceUser = GetUserNameFromDeviceID -DeviceID $activeSyncDeviceData.Identity
+					    LogText  ([string]::Format("{0,-5} {1,-19} {2,-35} {3,-20}", $activeSyncDeviceCounter, $activeDeviceUser,
+						    $activeSyncDeviceData.DeviceOS, $activeSyncDeviceData.LastSuccessSync))
+				    }
 
-				$listActiveSyncDeviceData.Add($activeSyncDeviceData)
-				$activeSyncDeviceCounter++
-			}
+				    $listActiveSyncDeviceData.Add($activeSyncDeviceData)
+				    $activeSyncDeviceCounter++
+			    }
 
-			$listActiveSyncDeviceData | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
+			    $listActiveSyncDeviceData | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
+		    }
+        }
+        else {
+			LogText "Exchange cmdlet Get-ActiveSyncDevice not found. Mobile device data not available" 
 		}
 	}
 	
@@ -583,7 +682,7 @@ USAGE:
 # Function that resets AdminSessionADSettings.DefaultScope to original value and exits the script 
 function Exit-Script 
 { 
-    $Global:AdminSessionADSettings.DefaultScope = $OriginalDefaultScope 
+    #$Global:AdminSessionADSettings.DefaultScope = $OriginalDefaultScope 
  
     exit 
 } 
@@ -601,8 +700,8 @@ LogText "It will take some time if there are a large amount of users......"
 LogText "" 
  
 # Report all recipients in the org. 
-$OriginalDefaultScope = $Global:AdminSessionADSettings.DefaultScope 
-$Global:AdminSessionADSettings.DefaultScope = $Null 
+#$OriginalDefaultScope = $Global:AdminSessionADSettings.DefaultScope 
+#$Global:AdminSessionADSettings.DefaultScope = $Null 
  
 $TotalMailboxes = 0 
 $TotalEnterpriseCALs = 0 
@@ -631,15 +730,8 @@ if ($EnableProgressOutput -eq $True) {
 ## Debug code ## 
 ################ 
  
-# Bool variable for output hash table information for debugging purpose. 
-$EnableOutputCounts = $False 
- 
 function Output-Counts 
 { 
-    if ($EnableOutputCounts -eq $False) { 
-        return 
-    } 
- 
     LogText "Hash Table Name                                 Count" 
     LogText "---------------                                 -----" 
     LogText "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
@@ -691,7 +783,7 @@ Get-Mailbox -ResultSize 'Unlimited' -Filter { (RecipientTypeDetails -eq 'UserMai
  
     if ($Mailbox.ExchangeVersion.ToString().Contains(" (8.")) { 
         $AllMailboxIDs[$Mailbox.Identity] = $null 
-        $Script:TotalMailboxes++ 
+        $TotalMailboxes++ 
     } 
 } 
  
@@ -995,7 +1087,7 @@ Output-Counts
  
 Output-Report 
  
-$Global:AdminSessionADSettings.DefaultScope = $OriginalDefaultScope
+#$Global:AdminSessionADSettings.DefaultScope = $OriginalDefaultScope
 }
 
 $scriptGetCALReqs2010 = 
@@ -1099,14 +1191,8 @@ if ($EnableProgressOutput -eq $True) {
 ## Debug code ## 
 ################ 
  
-# Bool variable for output hash table information for debugging purpose. 
-$EnableOutputCounts = $False 
- 
 function Output-Counts 
 { 
-    if ($EnableOutputCounts -eq $False) { 
-        return 
-    } 
  
     LogText "Hash Table Name                                 Count" 
     LogText "---------------                                 -----" 
@@ -1678,15 +1764,8 @@ if ($EnableProgressOutput -eq $True) {
 ## Debug code ## 
 ################ 
  
-# Bool variable for output hash table information for debugging purpose. 
-$EnableOutputCounts = $False 
- 
 function Output-Counts 
-{ 
-    if ($EnableOutputCounts -eq $False) { 
-        return 
-    } 
- 
+{  
     LogText "Hash Table Name                                 Count" 
     LogText "---------------                                 -----" 
     LogText "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
@@ -2307,15 +2386,8 @@ if ($EnableProgressOutput -eq $True) {
 ## Debug code ## 
 ################ 
  
-# Bool variable for output hash table information for debugging purpose. 
-$EnableOutputCounts = $False 
- 
 function Output-Counts 
 { 
-    if ($EnableOutputCounts -eq $False) { 
-        return 
-    } 
- 
     LogText "Hash Table Name                                 Count" 
     LogText "---------------                                 -----" 
     LogText "AllMailboxIDs:                                 " $AllMailboxIDs.Count 
@@ -2825,6 +2897,5 @@ catch {
 	LogLastException
 }
 
-exit
 
 
