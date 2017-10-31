@@ -13,6 +13,10 @@
     $OutputFile1 = "Devices.csv",
     [alias("o2")]
     $OutputFile2 = "Software.csv",
+    [alias("o3")]
+    $OutputFile3 = "Services.csv",
+    [alias("o4")]
+    $OutputFile4 = "IEFiles.csv",
     [alias("log")]
     [string] $LogFile = "SCCMLogFile.txt",
     $UserName,
@@ -117,6 +121,7 @@ function LogEnvironmentDetails {
     LogText -Color Gray "Required Data:        $RequiredData"
     LogText -Color Gray "Output File 1:        $OutputFile1"
     LogText -Color Gray "Output File 2:        $OutputFile2"
+    LogText -Color Gray "Output File 3:        $OutputFile3"
     LogText -Color Gray ""
 }
 
@@ -174,7 +179,6 @@ function Invoke-SQL {
     $fileWriter = New-Object System.IO.StreamWriter $resultsFilePath
 
     $connectionString = GetConnectionString
-    "Connection String: $connectionString"
     $connection = new-object system.data.SqlClient.SQLConnection(GetConnectionString)
     $command = new-object system.data.sqlclient.sqlcommand($sqlCommand,$connection)
     $command.CommandTimeout = $SQLCommandTimeout
@@ -221,8 +225,10 @@ function Get-SCCMInventoryData {
         InitialiseLogFile
         LogEnvironmentDetails
         SetupDateFormats
-        
+
         if ($RequiredData -eq "DeviceData" -or $RequiredData -eq "AllData") {
+            
+        LogText "Querying Device Data"
             if ($SCCMVersion -eq "2007") {
                 Invoke-SQL -SQLCommand $sqlCommandDevices2007 -ResultsFilePath $OutputFile1 
             }
@@ -235,7 +241,15 @@ function Get-SCCMInventoryData {
             if ($AllVendors) {
                 $sqlCommandSoftware = $sqlCommandSoftware.replace('--//All Vendors//--','')
             }
-            Invoke-SQL -SQLCommand $sqlCommandSoftware -ResultsFilePath $OutputFile2 
+
+            LogText "Querying Software Data"
+            Invoke-SQL -SQLCommand $sqlCommandSoftware -ResultsFilePath $OutputFile2
+
+            LogText "Querying Services Data"
+            Invoke-SQL -SQLCommand $sqlCommandServices -ResultsFilePath $OutputFile3
+
+            LogText "Querying IE Data"
+            Invoke-SQL -SQLCommand $sqlIEFileData -ResultsFilePath $OutputFile4
         }
     }
     catch{
@@ -253,6 +267,10 @@ SELECT
     ,[ComputerSystem].[Domain0] AS [Domain]
     ,[System].[Resource_Domain_OR_Workgr0] AS [Resource_Domain_OR_Workgr0]
     ,[System].[Distinguished_Name0] AS [Distinguished_Name0]
+    ,[System].[AD_Site_Name0] AS [AD_Site_Name0]
+    ,[System].[Is_Virtual_Machine0] AS [Is_Virtual_Machine0]
+    ,[System].[User_Domain0] AS [User_Domain0]
+    ,[System].[User_Name0] AS [User_Name0]
     ,[Bios].[SerialNumber0] AS [BiosSerialNumber]  
     ,[Bios].[ReleaseDate0] AS [BiosReleaseDate]
     ,[NetworkAdapter].[MacAddress] AS [MacAddress]
@@ -273,6 +291,7 @@ SELECT
     ,[Processor].[CpuType] AS [CpuType]
     ,[ComputerSystem].[Model0] AS [Model]
     ,[ComputerSystem].[Manufacturer0] AS [Manufacturer]
+    ,[ComputerSystem].[UserName0] AS [UserName]
     ,NULLIF([System].[Virtual_Machine_Host_Name0], '') AS [VirtualHostName]
     ,[VirtualMachine].[PhysicalHostName0] AS [VirtualPhysicalHostName]
     ,[VirtualMachine].[ResourceID] AS [VirtualResourceID]
@@ -331,6 +350,7 @@ LEFT OUTER JOIN
             ,[NumberOfProcessors0]
             ,[Model0]
             ,[Manufacturer0]
+            ,[UserName0]
             ,ROW_NUMBER() OVER (PARTITION BY [ResourceID] ORDER BY [GroupID] DESC) AS [ComputerSystemRow]
         FROM
             [dbo].[v_GS_Computer_System]
@@ -397,7 +417,7 @@ OUTER APPLY
     ) AS [NetworkAdapter1] (IPAddress);
 "@
 
-# THis script used to use v_GS_INSTALLED_SOFTWARE
+# This script used to use v_GS_INSTALLED_SOFTWARE
 # v_GS_INSTALLED_SOFTWARE requires Asset Intelligence and software scanning to be enabled
 # This table included install location
 
@@ -526,6 +546,7 @@ SELECT
     ,[Processor].[CpuType] AS [CpuType]
     ,[ComputerSystem].[Model0] AS [Model]
     ,[ComputerSystem].[Manufacturer0] AS [Manufacturer]
+    ,[ComputerSystem].[UserName0] AS [UserName]
     --/--,NULLIF([System].[Virtual_Machine_Host_Name0], '') AS [VirtualHostName]
     --/--,[VirtualMachine].[PhysicalHostName0] AS [VirtualPhysicalHostName]
     --/--,[VirtualMachine].[ResourceID] AS [VirtualResourceID]
@@ -585,6 +606,7 @@ LEFT OUTER JOIN
             ,[NumberOfProcessors0]
             ,[Model0]
             ,[Manufacturer0]
+            ,[UserName0]
             ,ROW_NUMBER() OVER (PARTITION BY [ResourceID] ORDER BY [GroupID] DESC) AS [ComputerSystemRow]
         FROM
             [dbo].[v_GS_Computer_System]
@@ -654,6 +676,48 @@ OUTER APPLY
             [NetworkConfig].[IPAddress0] NOT IN ('0.0.0.0')
         FOR XML PATH ('')
     ) AS [NetworkAdapter1] (IPAddress);
+"@
+
+$sqlCommandServices = @"
+SELECT DISTINCT
+    [Services].[ResourceID] AS [SourceKey],
+    [Services].[AcceptPause0] AS [AcceptPause],
+    [Services].[AcceptStop0] AS [AcceptStop],
+    [Services].[Caption0] AS [Caption],
+    [Services].[Description0] AS [Description],
+    [Services].[DesktopInteract0] AS [DesktopInteract],
+    [Services].[DisplayName0] AS [DisplayName],
+    [Services].[ErrorControl0] AS [ErrorControl],
+    [Services].[ExitCode0] AS [ExitCode],
+    [Services].[Name0] AS [Name],
+    [Services].[PathName0] AS [PathName],
+    [Services].[ProcessId0] AS [ProcessId],
+    [Services].[ServiceSpecificExitCode0] AS [ServiceSpecificExitCode],
+    [Services].[ServiceType0] AS [ServiceType],
+    [Services].[Started0] AS [Started],
+    [Services].[StartMode0] AS [StartMode],
+    [Services].[StartName0] AS [StartName],
+    [Services].[State0] AS [State],
+    [Services].[Status0] AS [Status],
+    [Services].[TagId0] AS [TagId],
+    [Services].[WaitHint0] AS [WaitHint]
+FROM
+    [dbo].[v_GS_SERVICE] AS [Services]
+"@
+
+$sqlIEFileData = @"
+SELECT
+    [SoftwareFiles].[ResourceID],
+    [SoftwareFiles].[FileName],
+    [SoftwareFiles].[FileDescription],
+    [SoftwareFiles].[FileVersion],
+    [SoftwareFiles].[FileSize],
+    [SoftwareFiles].[FilePath]
+From
+    [dbo].[v_GS_SoftwareFile] As [SoftwareFiles]
+Where
+    [SoftwareFiles].FileName = 'iexplore.exe'
+    and [SoftwareFiles].FilePath like '%Internet Explorer%'
 "@
 
 Get-SCCMInventoryData
