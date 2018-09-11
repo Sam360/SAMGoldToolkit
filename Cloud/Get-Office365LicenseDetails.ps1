@@ -177,6 +177,7 @@ function LogEnvironmentDetails {
     LogText -Color Gray " "
 
     $OSDetails = Get-WmiObject Win32_OperatingSystem
+    $Elevated = [bool](([System.Security.Principal.WindowsIdentity]::GetCurrent()).groups -match "S-1-5-32-544")
     LogText -Color Gray "Computer Name:        $($env:COMPUTERNAME)"
     LogText -Color Gray "User Name:            $($env:USERNAME)@$($env:USERDNSDOMAIN)"
     LogText -Color Gray "Windows Version:      $($OSDetails.Caption)($($OSDetails.Version))"
@@ -184,6 +185,7 @@ function LogEnvironmentDetails {
     LogText -Color Gray "PowerShell Version:   $($PSVersionTable.PSVersion)"
     LogText -Color Gray "PowerShell Word size: $($([IntPtr]::size) * 8) bit"
     LogText -Color Gray "CLR Version:          $($PSVersionTable.CLRVersion)"
+    LogText -Color Gray "Elevated:             $Elevated"
     LogText -Color Gray "Current Date Time:    $(Get-Date -Format "yyyy-MM-dd HH:mm:ss")"
     LogText -Color Gray "Username Parameter:   $UserName"
     LogText -Color Gray "Output File 1:        $OutputFile1"
@@ -343,11 +345,11 @@ function ConfigureOffice365Environment() {
         
     # Path for MS Online Sign-in Assistant
     if ($OSArch -eq '64-bit') {
-        $AzureAD_msi_url = 'http://go.microsoft.com/fwlink/p/?linkid=236297'
+        $AzureAD_msi_url = 'http://download.connect.microsoft.com/pr/AdministrationConfig_3.msi?t=2beb3aa4-d5b8-45e5-98ff-2c4364123041&e=1505771366&h=492861562bdc556432e4d3ab50f6b41e'
         $MsolCLI_msi_url = 'https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_64.msi'
     }
     else {
-        $AzureAD_msi_url = 'http://go.microsoft.com/fwlink/p/?linkid=236298'
+        $AzureAD_msi_url = 'http://download.connect.microsoft.com/pr/AdministrationConfig_3.msi?t=2beb3aa4-d5b8-45e5-98ff-2c4364123041&e=1505771366&h=492861562bdc556432e4d3ab50f6b41e'
         $MsolCLI_msi_url = 'https://download.microsoft.com/download/5/0/1/5017D39B-8E29-48C8-91A8-8D0E4968E6D4/en/msoidcli_32.msi'
     }
     
@@ -365,7 +367,7 @@ function ConfigureOffice365Environment() {
     LogProgress -Activity "Office 365 Data Export" -Status "Installing Windows Azure Active Directory Component" -percentComplete 15
     if (! (DependencyInstaller -InstallName "Windows Azure Active Directory*" `
                                         -msiURL $AzureAD_msi_url `
-                                        -msiFileName "AdministrationConfig-en.msi" `
+                                        -msiFileName "AdministrationConfig_3.msi" `
                                         -downloadPath $scriptFolder)){
         LogError  "MSOnline Administration Module could not be installed. Please check if you have admin rights and try again"
         return $false
