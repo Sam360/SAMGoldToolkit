@@ -3,8 +3,8 @@
  # Get-ExchangeDetails
  # SAM Gold Toolkit
  # Original Source: Jon Mulligan (Sam360)
- #	              : Sanjay Ramaswamy https://gallery.technet.microsoft.com/scriptcenter/acdcb192-f226-4517-b3f9-005dce6f4fc3
- #                : Oliver Moazzezi http://www.exchange2010.com/2013/11/calculating-cal-requirements-for.html
+ #                : Sanjay Ramaswamy https://gallery.technet.microsoft.com/scriptcenter/acdcb192-f226-4517-b3f9-005dce6f4fc3
+ #                : Oliver Moazzezi  http://www.exchange2010.com/2013/11/calculating-cal-requirements-for.html
  #
  ##########################################################################
 
@@ -472,7 +472,13 @@ function Get-ExchangeDetails {
         #Get Device details
         LogProgress -activity "Exchange Data Export" -Status "Querying Device Data" -percentComplete 60
         if (Get-Command "Get-ActiveSyncDevice" -errorAction SilentlyContinue) {
-            $activeSyncDevices = Get-ActiveSyncDevice -ResultSize 'Unlimited' -WarningAction:silentlycontinue 
+            if ((Get-Command "Get-ActiveSyncDevice").parameters['ResultSize']) {
+                $activeSyncDevices = Get-ActiveSyncDevice -ResultSize 'Unlimited' -WarningAction:silentlycontinue
+            }
+            else {
+                $activeSyncDevices = Get-ActiveSyncDevice -WarningAction:silentlycontinue
+            }
+             
             if ($activeSyncDevices)
             {
                 $activeSyncDeviceCount = CountItems($activeSyncDevices)
@@ -492,7 +498,9 @@ function Get-ExchangeDetails {
                         DeviceType, DeviceUserAgent, DeviceModel, UserDisplayName, OrganizationId, DeviceActiveSyncVersion, 
                         FirstSyncTime, WhenCreatedUTC, WhenChangedUTC, LastPingHeartbeat, LastSyncAttemptTime, LastSuccessSync, 
                         LastPolicyUpdateTime, DevicePolicyApplied, DevicePolicyApplicationStatus, Status, StatusNote, 
-                        IsRemoteWipeSupported, DeviceWipeSentTime, DeviceWipeRequestTime, DeviceWipeAckTime
+                        IsRemoteWipeSupported, DeviceWipeSentTime, DeviceWipeRequestTime, DeviceWipeAckTime, 
+					    ClientType, ClientVersion, DeviceAccessState, DeviceAccessStateReason, DeviceEnableOutboundSMS, 
+					    DevicePhoneNumber, LastDeviceWipeRequestor, NumberOfFoldersSynced
 
                     if ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData"){
                         Write-Progress -activity "Exchange Data Export" -Status "Querying Device Stats $($activeSyncDeviceData.FriendlyName)" -percentComplete (60 + ($activeSyncDeviceCounter/$activeSyncDeviceCount)*38)
@@ -511,6 +519,14 @@ function Get-ExchangeDetails {
                             $activeSyncDeviceData.DeviceWipeSentTime = $activeSyncDeviceStatistics.DeviceWipeSentTime
                             $activeSyncDeviceData.DeviceWipeRequestTime = $activeSyncDeviceStatistics.DeviceWipeRequestTime
                             $activeSyncDeviceData.DeviceWipeAckTime = $activeSyncDeviceStatistics.DeviceWipeAckTime
+							$activeSyncDeviceData.ClientType = $activeSyncDeviceStatistics.ClientType
+							$activeSyncDeviceData.ClientVersion = $activeSyncDeviceStatistics.ClientVersion
+							$activeSyncDeviceData.DeviceAccessState = $activeSyncDeviceStatistics.DeviceAccessState
+							$activeSyncDeviceData.DeviceAccessStateReason = $activeSyncDeviceStatistics.DeviceAccessStateReason
+							$activeSyncDeviceData.DeviceEnableOutboundSMS = $activeSyncDeviceStatistics.DeviceEnableOutboundSMS
+							$activeSyncDeviceData.DevicePhoneNumber = $activeSyncDeviceStatistics.DevicePhoneNumber
+							$activeSyncDeviceData.LastDeviceWipeRequestor = $activeSyncDeviceStatistics.LastDeviceWipeRequestor
+							$activeSyncDeviceData.NumberOfFoldersSynced = $activeSyncDeviceStatistics.NumberOfFoldersSynced
                         }
                     }
 
@@ -526,6 +542,13 @@ function Get-ExchangeDetails {
 
                 $listActiveSyncDeviceData | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
             }
+        }
+        elseif ((Get-Command "Get-ActiveSyncDeviceStatistics" -errorAction SilentlyContinue) -and
+                $mailBoxes -and
+                ($RequiredData -eq "UtilizationData" -or $RequiredData -eq "AllData")) {
+            #Exchange 2007 support 'Get-ActiveSyncDeviceStatistics' but not 'Get-ActiveSyncDevice'
+            $listActiveSyncDeviceData = $mailBoxes | foreach { Get-ActiveSyncDeviceStatistics -Mailbox $_}
+            $listActiveSyncDeviceData | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
         }
         else {
             LogText "Exchange cmdlet Get-ActiveSyncDevice not found. Mobile device data not available" 
@@ -1491,12 +1514,12 @@ for ($i=0; $i -lt $DiscoveryConsoleRoleAssignments.Count; $i++) {
         Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ADScope.Root -Filter $Filter | foreach { 
             if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
                 if ($RoleAssignment.RecipientWriteScope -eq [Microsoft.Exchange.Data.Directory.SystemConfiguration.RecipientWriteScopeType]::ExclusiveRecipientScope) { 
-                    $EnterpriseCALMailboxIDs[$_.Identity] = $null 
+                    #$EnterpriseCALMailboxIDs[$_.Identity] = $null 
                     $SearchableMaiboxIDs[$_.Identity] = $null 
                 } 
                 else { 
                     if (-not($ExcludedMailboxes[$_.Identity] -eq $true)) { 
-                        $EnterpriseCALMailboxIDs[$_.Identity] = $null 
+                        #$EnterpriseCALMailboxIDs[$_.Identity] = $null 
                         $SearchableMaiboxIDs[$_.Identity] = $null 
                     } 
                 } 
@@ -2080,12 +2103,12 @@ if (Get-Command "Get-ManagementRole" -errorAction SilentlyContinue){
             Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ADScope.Root -Filter $Filter | foreach { 
                 if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
                     if ($RoleAssignment.RecipientWriteScope -eq [Microsoft.Exchange.Data.Directory.SystemConfiguration.RecipientWriteScopeType]::ExclusiveRecipientScope) { 
-                        $EnterpriseCALMailboxIDs[$_.Identity] = $null 
+                        #$EnterpriseCALMailboxIDs[$_.Identity] = $null 
                         $SearchableMaiboxIDs[$_.Identity] = $null 
                     } 
                     else { 
                         if (-not($ExcludedMailboxes[$_.Identity] -eq $true)) { 
-                            $EnterpriseCALMailboxIDs[$_.Identity] = $null 
+                            #$EnterpriseCALMailboxIDs[$_.Identity] = $null 
                             $SearchableMaiboxIDs[$_.Identity] = $null 
                         } 
                     } 
