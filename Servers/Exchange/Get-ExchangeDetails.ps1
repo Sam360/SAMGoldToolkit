@@ -70,7 +70,7 @@ try
     $OutputFile4 = "ExchangeCALs" + $ExchangeServer + ".csv",
     [alias("o5")]
     $OutputFile5 = "ExchangeCALDetails" + $ExchangeServer + ".csv",
-    [alias("log")]
+    [alias("o6")]
     [string] $LogFile = "ExchangeQueryLog.txt",
     $UserName,
     $Password,
@@ -655,7 +655,17 @@ function Output-Report {
     $calReport | Add-Member -MemberType NoteProperty -Name InfoLeakageProtectionEnabled -Value $InfoLeakageProtectionEnabled
     $calReport | Add-Member -MemberType NoteProperty -Name AdvancedAntispamEnabled -Value $AdvancedAntispamEnabled
     $calReport | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
-} 
+}
+
+function IsVersion2010OrNewer([ADObject]$ExchangeObject){
+    if (!$ExchangeObject) {
+		return $False
+	}
+	
+	$strVersion = $ExchangeObject.ExchangeVersion.ToString()
+	
+	return ($strVersion.Contains("(14.") -or $strVersion.Contains("(15."))
+}
 
 $scriptGetCALReqs2007 = 
 {
@@ -1260,7 +1270,7 @@ function Merge-Hashtables
  
 Get-Recipient -ResultSize 'Unlimited' -Filter $UserMailboxFilter | foreach { 
     $Mailbox = $_ 
-    if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) { 
+    if (IsVersion2010OrNewer -ExchangeObject $Mailbox) { 
         $AllMailboxIDs[$Mailbox.Identity] = $null 
         $TotalMailboxes++ 
     } 
@@ -1483,7 +1493,7 @@ foreach ($ManagementScope in $ManagementScopes.Values) {
         $Filter = "(" + $ManagementScope.RecipientFilter + ") -and (" + $Filter + ")" 
     } 
     Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ManagementScope.RecipientRoot -Filter $Filter | foreach { 
-        if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
+        if (IsVersion2010OrNewer -ExchangeObject $_) { 
             $ExcludedMailboxes[$_.Identity] = $true 
         } 
     } 
@@ -1512,7 +1522,7 @@ for ($i=0; $i -lt $DiscoveryConsoleRoleAssignments.Count; $i++) {
             $Filter = "(" + $ScopeFilter + ") -and (" + $Filter + ")" 
         } 
         Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ADScope.Root -Filter $Filter | foreach { 
-            if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
+            if (IsVersion2010OrNewer -ExchangeObject $_) { 
                 if ($RoleAssignment.RecipientWriteScope -eq [Microsoft.Exchange.Data.Directory.SystemConfiguration.RecipientWriteScopeType]::ExclusiveRecipientScope) { 
                     #$EnterpriseCALMailboxIDs[$_.Identity] = $null 
                     $SearchableMaiboxIDs[$_.Identity] = $null 
@@ -1554,7 +1564,7 @@ function Traverse-GroupMember
           ($GroupMember.RecipientTypeDetails -eq 'SharedMailbox') -or 
           ($GroupMember.RecipientTypeDetails -eq 'LinkedMailbox') ) { 
         # Journal one mailbox 
-        if ($GroupMember.ExchangeVersion.ToString().Contains("(14.")) { 
+        if (IsVersion2010OrNewer -ExchangeObject $GroupMember) { 
             $JournalingMailboxIDs[$GroupMember.Identity] = $null 
         } 
     } elseif ( ($GroupMember.RecipientType -eq "Group") -or ($GroupMember.RecipientType -like "Dynamic*Group") -or ($GroupMember.RecipientType -like "Mail*Group") ) { 
@@ -1649,7 +1659,7 @@ foreach ($JournalRule in Get-JournalRule){
                 ($JournalRecipient.RecipientTypeDetails -eq 'LinkedMailbox') ) { 
  
                 # Journal a mailbox 
-                if ($JournalRecipient.ExchangeVersion.ToString().Contains("(14.")) { 
+                if (IsVersion2010OrNewer -ExchangeObject $JournalRecipient) { 
                     $JournalingMailboxIDs[$JournalRecipient.Identity] = $null 
                 } 
             } elseif ( ($JournalRecipient.RecipientType -like "Mail*Group") -or ($JournalRecipient.RecipientType -like "Dynamic*Group") ) { 
@@ -1833,7 +1843,7 @@ function Merge-Hashtables
 Get-Recipient -ResultSize 'Unlimited' -Filter $UserMailboxFilter | foreach { 
     $Mailbox = $_ 
     #if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) { 
-    if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) { 
+    if (IsVersion2010OrNewer -ExchangeObject $Mailbox) { 
         $AllMailboxIDs[$Mailbox.Identity] = $null 
         $TotalMailboxes++ 
     } 
@@ -1966,7 +1976,7 @@ $activeSyncMailboxPolicies | foreach {
 Get-Recipient -ResultSize 'Unlimited' -Filter $UserMailboxFilter -PropertySet 'ConsoleLargeSet' | foreach {   
     $Mailbox = $_ 
      
-    if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) 
+    if (IsVersion2010OrNewer -ExchangeObject $Mailbox) 
     { 
         # UM usage classifies the user as an Enterprise CAL    
         if ($Mailbox.UMEnabled) 
@@ -2072,7 +2082,7 @@ if (Get-Command "Get-ManagementRole" -errorAction SilentlyContinue){
             $Filter = "(" + $ManagementScope.RecipientFilter + ") -and (" + $Filter + ")" 
         } 
         Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ManagementScope.RecipientRoot -Filter $Filter | foreach { 
-            if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
+            if (IsVersion2010OrNewer -ExchangeObject $_) { 
                 $ExcludedMailboxes[$_.Identity] = $true 
             } 
         } 
@@ -2101,7 +2111,7 @@ if (Get-Command "Get-ManagementRole" -errorAction SilentlyContinue){
                 $Filter = "(" + $ScopeFilter + ") -and (" + $Filter + ")" 
             } 
             Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ADScope.Root -Filter $Filter | foreach { 
-                if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
+                if (IsVersion2010OrNewer -ExchangeObject $_) { 
                     if ($RoleAssignment.RecipientWriteScope -eq [Microsoft.Exchange.Data.Directory.SystemConfiguration.RecipientWriteScopeType]::ExclusiveRecipientScope) { 
                         #$EnterpriseCALMailboxIDs[$_.Identity] = $null 
                         $SearchableMaiboxIDs[$_.Identity] = $null 
@@ -2147,7 +2157,7 @@ function Traverse-GroupMember
           ($GroupMember.RecipientTypeDetails -eq 'SharedMailbox') -or 
           ($GroupMember.RecipientTypeDetails -eq 'LinkedMailbox') ) { 
         # Journal one mailbox 
-        if ($GroupMember.ExchangeVersion.ToString().Contains("(14.")) { 
+        if (IsVersion2010OrNewer -ExchangeObject $GroupMember) { 
             $JournalingMailboxIDs[$GroupMember.Identity] = $null 
         } 
     } elseif ( ($GroupMember.RecipientType -eq "Group") -or ($GroupMember.RecipientType -like "Dynamic*Group") -or ($GroupMember.RecipientType -like "Mail*Group") ) { 
@@ -2248,7 +2258,7 @@ foreach ($JournalRule in Get-JournalRule){
                 ($JournalRecipient.RecipientTypeDetails -eq 'MailUser')) { 
  
                 # Journal a mailbox 
-                if ($JournalRecipient.ExchangeVersion.ToString().Contains("(14.")) { 
+                if (IsVersion2010OrNewer -ExchangeObject $JournalRecipient) { 
                     $JournalingMailboxIDs[$JournalRecipient.Identity] = $null 
                 } 
             } elseif ( ($JournalRecipient.RecipientType -like "Mail*Group") -or ($JournalRecipient.RecipientType -like "Dynamic*Group") ) { 
@@ -2455,7 +2465,7 @@ function Merge-Hashtables
  
 Get-Recipient -ResultSize 'Unlimited' -Filter $UserMailboxFilter | foreach { 
     $Mailbox = $_ 
-    if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) { 
+    if (IsVersion2010OrNewer -ExchangeObject $Mailbox) { 
         $AllMailboxIDs[$Mailbox.Identity] = $null 
         $TotalMailboxes++ 
     } 
@@ -2588,7 +2598,7 @@ $activeSyncMailboxPolicies | foreach {
 Get-Recipient -ResultSize 'Unlimited' -Filter $UserMailboxFilter -PropertySet 'ConsoleLargeSet' | foreach {   
     $Mailbox = $_ 
      
-    if ($Mailbox.ExchangeVersion.ToString().Contains("(14.")) 
+    if (IsVersion2010OrNewer -ExchangeObject $Mailbox) 
     { 
         # UM usage classifies the user as an Enterprise CAL    
         if ($Mailbox.UMEnabled) 
@@ -2696,7 +2706,7 @@ foreach ($ManagementScope in $ManagementScopes.Values) {
         $Filter = "(" + $ManagementScope.RecipientFilter + ") -and (" + $Filter + ")" 
     } 
     Get-Recipient -ResultSize 'Unlimited'-OrganizationalUnit $ManagementScope.RecipientRoot -Filter $Filter | foreach { 
-        if ($_.ExchangeVersion.ToString().Contains("(14.")) { 
+        if (IsVersion2010OrNewer -ExchangeObject $_) { 
             $ExcludedMailboxes[$_.Identity] = $true 
         } 
     } 
@@ -2730,7 +2740,7 @@ function Traverse-GroupMember
           ($GroupMember.RecipientTypeDetails -eq 'SharedMailbox') -or 
           ($GroupMember.RecipientTypeDetails -eq 'LinkedMailbox') ) { 
         # Journal one mailbox 
-        if ($GroupMember.ExchangeVersion.ToString().Contains("(14.")) { 
+        if (IsVersion2010OrNewer -ExchangeObject $GroupMember) { 
             $JournalingMailboxIDs[$GroupMember.Identity] = $null 
         } 
     } elseif ( ($GroupMember.RecipientType -eq "Group") -or ($GroupMember.RecipientType -like "Dynamic*Group") -or ($GroupMember.RecipientType -like "Mail*Group") ) { 
@@ -2831,7 +2841,7 @@ foreach ($JournalRule in Get-JournalRule){
                 ($JournalRecipient.RecipientTypeDetails -eq 'MailUser')) { 
  
                 # Journal a mailbox 
-                if ($JournalRecipient.ExchangeVersion.ToString().Contains("(14.")) { 
+                if (IsVersion2010OrNewer -ExchangeObject $JournalRecipient) { 
                     $JournalingMailboxIDs[$JournalRecipient.Identity] = $null 
                 } 
             } elseif ( ($JournalRecipient.RecipientType -like "Mail*Group") -or ($JournalRecipient.RecipientType -like "Dynamic*Group") ) { 
