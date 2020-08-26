@@ -144,23 +144,56 @@ function LogEnvironmentDetails {
 	LogText -Color Gray ""
 }
 
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
+}
+
 function Get-VMwareVMList
 {
 	try
 	{
 		InitialiseLogFile
 		LogEnvironmentDetails
+        SetupDateFormats
 
-		LogProgress "Importing modules"
-		$allSnapIns = get-pssnapin -registered | sort -Descending
-		foreach ($snapIn in $allSnapIns){
-			if (($snapIn.name -eq 'VMware.DeployAutomation') -or
-				($snapIn.name -eq 'VMware.ImageBuilder') -or
-				($snapIn.name -eq 'VMware.VimAutomation.Core') -or
-				($snapIn.name -eq 'VMware.VimAutomation.License') -or
-				($snapIn.name -eq 'VMware.VimAutomation.Vds')){
-				LogText "Adding SnapIn: $($snapIn.Name)"
-				add-PSSnapin -Name $snapIn.name
+		if (!(EnvironmentConfigured))
+		{
+            LogProgress "Importing modules/snap-ins"
+			if (Get-Module -ListAvailable -Name VMware.VimAutomation.Core) {
+                LogText "Adding Module: VMware.VimAutomation.Core"
+                Import-Module -Name VMware.VimAutomation.Core
+            }
+		}
+
+		if (!(EnvironmentConfigured)) 
+		{
+			$allSnapIns = get-pssnapin -registered | sort -Descending
+			foreach ($snapIn in $allSnapIns){
+				if ($snapIn.name -eq 'VMware.VimAutomation.Core') {
+					LogText "Adding SnapIn: $($snapIn.Name)"
+					add-PSSnapin -Name $snapIn.name
+				}
 			}
 		}
 

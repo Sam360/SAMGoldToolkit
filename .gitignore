@@ -170,3 +170,9 @@ $RECYCLE.BIN/
 /Cloud/Office365LicenseAssignments.csv
 *.csv
 *.txt
+/Cloud/msoidcli.msi
+/Cloud/Collector-Sam360.ps1
+/Cloud/AdministrationConfig-en.msi
+/Sam360API/MicrosoftUniversalInventory/Sam360UISync.zip
+/SqlQuery_1.sql
+/MiniDump.ps1

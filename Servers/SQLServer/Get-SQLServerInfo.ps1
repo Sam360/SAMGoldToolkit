@@ -46,6 +46,31 @@ function LogEnvironmentDetails {
 	Write-Output "Server Parameter:         $ComputerName"
 }
 
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
+}
+
 Function Get-SQLServerInfo1 {
     Param (
         [parameter(ValueFromPipeline=$True,ValueFromPipelineByPropertyName=$True)]
@@ -167,6 +192,8 @@ Function Get-SQLServerInfo2 {
 }
 
 LogEnvironmentDetails
+SetupDateFormats
+
 $SQLInstances1 = Get-SQLServerInfo1 -Computername $ComputerName 
 $SQLInstances1 | export-csv $OutputFile1 -notypeinformation -Encoding UTF8
 

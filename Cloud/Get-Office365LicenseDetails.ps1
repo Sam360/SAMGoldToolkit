@@ -397,6 +397,13 @@ function ConnectToMsol() {
         $credential = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
     }
 
+	$proxyAddress = [System.Net.WebProxy]::GetDefaultProxy().Address
+	if ($proxyAddress) {
+		LogText "Using proxy $proxyAddress"
+		# Configure Invoke-WebRequest to use a proxy for MS Online. Connect-MsolService should use same proxy.
+		Invoke-WebRequest -Proxy $proxyAddress -ProxyUseDefaultCredentials https://provisioningapi.microsoftonline.com/provisioningwebservice.svc
+	}
+
     ## Add the account user has entered
     Connect-MsolService -Credential $credential -ErrorAction SilentlyContinue -ErrorVariable errConn
     

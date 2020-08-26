@@ -657,7 +657,7 @@ function Output-Report {
     $calReport | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
 }
 
-function IsVersion2010OrNewer([ADObject]$ExchangeObject){
+function IsVersion2010OrNewer($ExchangeObject){
     if (!$ExchangeObject) {
 		return $False
 	}

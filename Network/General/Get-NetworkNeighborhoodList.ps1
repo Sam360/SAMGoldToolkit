@@ -43,12 +43,38 @@ function LogEnvironmentDetails {
 	Write-Output "Server Parameter:     $Server"
 }
 
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
+}
+
  function Get_NetworkNeighborhoodList {
 	#ShellSpecialFolderConstants 
 	#http://msdn.microsoft.com/en-us/library/windows/desktop/bb774096(v=vs.85).aspx
 	
 	try {
 		LogEnvironmentDetails
+        SetupDateFormats
 
 		$shellFolder = ( new-object -com shell.application ).NameSpace(0x12)
 		$shellFolder.Items() | select Name, Path | export-csv $OutputFile1 -notypeinformation -Encoding UTF8 }

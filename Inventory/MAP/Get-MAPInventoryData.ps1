@@ -137,6 +137,31 @@ function LogEnvironmentDetails {
 	LogText ""
 }
 
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
+}
+
 function GetConnectionString {
 	# Start the local db instance
 	$sqlLocalDBOutput = [string] (& sqllocaldb start MAPToolkit 2>&1)
@@ -224,6 +249,7 @@ function VerifyDBExists {
 function Get-MAPInventoryData {
 	try {
 		LogEnvironmentDetails
+        SetupDateFormats
 
 		if (-not (VerifyDBExists)) {
 			LogProgress "Unable to find MAP database"
@@ -336,6 +362,10 @@ SELECT
 	,[OsProductSuite] AS [OsProductSuite]
 	,[WmiOsVersion] AS [WmiOsVersion]
 	,[WmiScanResult] AS [WmiScanResult]
+	,[WmiDatetime] AS [WmiDatetime]
+	,[Workgroup] AS [Workgroup]
+	,[Role] AS [Role]
+	,[UpdateDatetime] AS [UpdateDatetime]
 FROM
 	[Core_Inventory].[Devices];
 "@

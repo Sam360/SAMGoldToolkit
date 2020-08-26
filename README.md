@@ -10,3 +10,4 @@ effectiveness.
 This library contains simple PowerShell scripts that we use every day to gather software inventory, configuration and usage metrics. Each script has a similar simple interface and can be quickly used by non powershell experts.
 
 Please feel free to contact us with a feature request, lodge a bug report, create a pull request or fork the whole repo!
+	

@@ -1,6 +1,6 @@
  ##########################################################################
  #
- # Get-Sam360Inventory
+ # Sam360UISync
  # SAM Gold Toolkit
  # Original Source: Sam360
  #
@@ -12,12 +12,12 @@
 
  Param(
     [alias("log")]
-    [string] $LogFile = "LogFile.txt",
+    [string] $LogFile = "$($env:Temp)\LogFile.txt",
     [string] $UserName,
     [string] $Password,
     [string] $ClientOrganisationId = "0",
     [string] $APIServer = "https://api.sam360.com",
-	[string] $UIDatabaseServerName, 
+    [string] $UIDatabaseServerName, 
     [string] $UIDatabaseName)
 
 function LogText {
@@ -301,9 +301,9 @@ $MappingSoftwareInstallations = @{
 	Sam360ReportId = "UniversalInventoryUniversalInventorySoftwareTable";
 	FieldMappings = @(
 		@{DBFieldName="SrcDeviceId"; DBFieldType="nvarchar"; DBFieldWidth=128; S3APIFieldName="DeviceAnonymisedDeviceName";},
-		@{DBFieldName="Publisher"; DBFieldType="nvarchar"; DBFieldWidth=256; S3APIFieldName="ProductManufacturer";},
-		@{DBFieldName="DiscoveredProduct"; DBFieldType="nvarchar"; DBFieldWidth=256; S3APIFieldName="ProductSAMNameAndEdition";},
-		@{DBFieldName="DiscoveredVersion"; DBFieldType="nvarchar"; DBFieldWidth=256; S3APIFieldName="ProductSAMVersionOrVersion";},
+		@{DBFieldName="Publisher"; DBFieldType="nvarchar"; DBFieldWidth=256; S3APIFieldName="ProductInstallationAddRemoveProgramsManufacturer";},
+		@{DBFieldName="DiscoveredProduct"; DBFieldType="nvarchar"; DBFieldWidth=256; S3APIFieldName="ProductInstallationAddRemoveProgramsName";},
+		@{DBFieldName="DiscoveredVersion"; DBFieldType="nvarchar"; DBFieldWidth=256; S3APIFieldName="ProductInstallationAddRemoveProgramsVersion";},
 		@{DBFieldName="InstallLocation"; DBFieldType="nvarchar"; DBFieldWidth=1024; S3APIFieldName="ProductInstallationInstallPath";},
 		@{DBFieldName="InstallDate"; DBFieldType="datetime"; S3APIFieldName="ProductInstallationInstallDate";},
 		@{DBFieldName="SoftwareCode"; DBFieldType="nvarchar"; DBFieldWidth=256; S3APIFieldName="ProductInstallationProductGUID";}
@@ -525,7 +525,7 @@ function GetSam360Inventory() {
         if ($clientOrganisations -and $clientOrganisations.Count -gt 1) {
             # This user has access to more than 1 organisation - Ask which organsation to export data for
             $global:orgCounter = 0
-            $clientOrganisations | Format-Table @{name="Index";expression={$global:orgCounter;$global:orgCounter+=1}}, OrganisationName, OrganisationDeviceCount
+            $clientOrganisations | % { new-object PSObject -Property $_} | Format-Table @{name="Index";expression={$global:orgCounter;$global:orgCounter+=1}}, OrganisationName, OrganisationDeviceCount
             $orgIndex = QueryUser -Message "$($clientOrganisations.Count) organisations available. Select the required organisation" -Prompt "Index" -DefaultValue "1"
             $orgIndexInt = [int]$orgIndex - 1
             $ClientOrganisationId = $clientOrganisations[$orgIndexInt].OrganisationID
@@ -549,6 +549,7 @@ function GetSam360Inventory() {
 	TransferSam360Data -Token $token -OrganisationId $ClientOrganisationId -dbConnection $DBConnection -dataMapping $MappingVMEvents
 	TransferSam360Data -Token $token -OrganisationId $ClientOrganisationId -dbConnection $DBConnection -dataMapping $MappingDeviceLogons
 	
+	ExecuteImportSP -dbConnection $DBConnection
 }
 
 function GetAPIToken {
@@ -585,7 +586,7 @@ function RunReport($Token, [string]$ReportId = "HardwareAllWindowsDomainsGeneral
         # $result is a 2d String array
         $records = New-Object System.Collections.Generic.List[System.Collections.Hashtable]
         $fieldNames = $apiResult[0]
-		LogProgress ($fieldNames -join ",")
+		#LogProgress ($fieldNames -join ",")
         for ($i1=1; $i1 -lt $apiResult.length; $i1++) {
             $record = @{}
             for ($i2=0; $i2 -lt $apiResult[$i1].length; $i2++) {
@@ -603,9 +604,25 @@ function RunReport($Token, [string]$ReportId = "HardwareAllWindowsDomainsGeneral
 
 function GetDBConnectionObject() {
 	$Connection = $null
+
+	if (!($UIDatabaseServerName)) {
+        $UIDatabaseServerName = QueryUser -Message "Universal Inventory Details Required" -Prompt "Server Name" -DefaultValue "localhost\SQLEXPRESS"
+		if (!$UIDatabaseServerName){
+			return $null
+		}
+	}
+
+	if (!($UIDatabaseName)) {
+        $UIDatabaseName = QueryUser -Prompt "Database Name" -DefaultValue "UI_DB1"
+		if (!$UIDatabaseName){
+			return $null
+		}
+	}
+
+	LogText
 	
 	try {
-		$ConnectionString = "Database=$UIDatabaseName; Server=$UIDatabaseServerName; Integrated Security=True; Persist Security Info=False";
+		$ConnectionString = "Server=$UIDatabaseServerName; Database=$UIDatabaseName; Integrated Security=True; Persist Security Info=False";
 		$Connection = New-Object System.Data.SqlClient.SqlConnection; 
 	    $Connection.ConnectionString = $ConnectionString; 
 		$Connection.Open();
@@ -621,7 +638,7 @@ function TransferSam360Data($Token, [string]$OrganisationId = "0", [System.Data.
 	# Query Sam360 API
 	LogProgress -progressDescription "Querying $($dataMapping.EntityName) details from Sam360"
 	$reportData = RunReport -Token $token -OrganisationId $ClientOrganisationId -ReportId $dataMapping.Sam360ReportId
-	$reportData | %{New-Object -Type PSObject -Property $_} | Export-Csv  "c:\\temp\\s3api\\$($dataMapping.Sam360ReportId).csv" -NoTypeInformation -Encoding UTF8
+	#$reportData | %{New-Object -Type PSObject -Property $_} | Export-Csv  "c:\\temp\\s3api\\$($dataMapping.Sam360ReportId).csv" -NoTypeInformation -Encoding UTF8
 	
 	# PreProcess data before saving to DB
 	if ($dataMapping.PreProcessFn) {
@@ -680,6 +697,26 @@ function SaveData([System.Data.SqlClient.SqlConnection] $dbConnection, $dataMapp
 		}
 		$result = $sqlCommandInsert.ExecuteScalar()
 	}
+}
+
+function ExecuteImportSP([System.Data.SqlClient.SqlConnection] $dbConnection) {
+	$strCommandText = "[in].sp_Import"
+	$sqlCommand = New-Object System.Data.SqlClient.SqlCommand($strCommandText, $dbConnection);
+
+	$sqlCommand.CommandType = [System.Data.CommandType]'StoredProcedure';
+	$outParameter = new-object System.Data.SqlClient.SqlParameter;
+	$outParameter.ParameterName = "@lastErrorMsg";
+	$outParameter.Direction = [System.Data.ParameterDirection]'Output';
+	$outParameter.DbType = [System.Data.DbType]'String';
+	$outParameter.Size = 2500;
+	$sqlCommand.Parameters.Add($outParameter) >> $null;
+	$result = $sqlCommand.ExecuteNonQuery();
+	$truth = $sqlCommand.Parameters["@lastErrorMsg"].Value;
+	$result
+	$truth
+
+
+	#$result = $sqlCommand.ExecuteScalar()
 }
 
 function GetFieldType($fieldTypeName) {

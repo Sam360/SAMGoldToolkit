@@ -6,7 +6,7 @@
 
 <#
 .SYNOPSIS
- The Get-LyncUsers script queries a single Lync server and produces up 1 CSV files
+ The Get-LyncUsers script queries a single Lync server and produces 4 CSV files
 	1)    LyncUsers.csv - One record per user including enabled features and required CAL
 
 .PARAMETER      UserName
@@ -33,10 +33,18 @@ param(
 	$ConnectionMethod = "Both",
 	[alias("o1")]
 	[string] $OutputFile1 = "LyncUsers.csv",
+    [alias("o2")]
+	[string] $OutputFile2 = "LyncSites.csv",
+    [alias("o3")]
+	[string] $OutputFile3 = "LyncServerApplications.csv",
+    [alias("o4")]
+	[string] $OutputFile4 = "LyncServerVersion.csv",
 	[alias("log")]
 	[string] $LogFile = "LyncLogFile" + $LyncServer + ".txt",
     [switch]
-	$Verbose
+	$Verbose = $false,
+    [switch]
+	$Headless = $false
 )
 
 function InitialiseLogFile {
@@ -108,6 +116,8 @@ function LogProgress([string]$Activity, [string]$Status, [Int32]$PercentComplete
 }
 
 function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = $false, [string]$DefaultValue){
+	$strResult = ""
+	
 	if ($Message) {
 		LogText $Message -color Yellow
 	}
@@ -118,10 +128,19 @@ function QueryUser([string]$Message, [string]$Prompt, [switch]$AsSecureString = 
 
 	$Prompt += ": "
 	LogText $Prompt -color Yellow -NoNewLine
-	$strResult = Read-Host -AsSecureString:$AsSecureString
+	
+	if ($Headless) {
+		LogText " (Headless - Using Default Value)" -color Yellow
+	}
+	else {
+		$strResult = Read-Host -AsSecureString:$AsSecureString
+	}
 
 	if(!$strResult) {
 		$strResult = $DefaultValue
+		if ($AsSecureString) {
+			$strResult = ConvertTo-SecureString $strResult -AsPlainText -Force
+		}
 	}
 
 	return $strResult
@@ -140,7 +159,8 @@ function Get-ConsoleCredential([String] $Message, [String] $DefaultUsername)
 	}
 
 	return new-object Management.Automation.PSCredential $strUsername, $strSecurePassword
-}                                                                     
+} 
+                                                                   
 function LogEnvironmentDetails {
 	LogText -Color Gray " "
 	LogText -Color Gray "   _____         __  __    _____       _     _   _______          _ _    _ _   "
@@ -167,7 +187,34 @@ function LogEnvironmentDetails {
 	LogText -Color Gray "Connection Method:    $ConnectionMethod"
 	LogText -Color Gray "Output File 1:        $OutputFile1"
 	LogText -Color Gray "Log File:             $LogFile"
+    LogText -Color Gray "Verbose:              $Verbose"
+    LogText -Color Gray "Headless:             $Headless"
 	LogText -Color Gray ""
+}
+
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
 }
 
 function EnvironmentConfigured {
@@ -205,242 +252,255 @@ function CalculateCAL($bUserStatus, $bStdCAL, $bEntCAL, $bPlusCAL) {
 
 function Get-LyncUsers {
 	InitialiseLogFile
+	LogProgress -Activity "Skype for Business Data Export" -Status "Logging environment details" -percentComplete 1
 	LogEnvironmentDetails
+    SetupDateFormats
 
-	Try {
+	if (($ConnectionMethod -eq "Both") -or ($ConnectionMethod -eq "RemoteSession") -or $Office365)
+	{
+        if (!($LyncServer))
+	    {
+            $deviceDetails = Get-WmiObject win32_computersystem
+            $deviceDNSName = $deviceDetails.DNSHostName + "." + $deviceDetails.Domain
+		    # Target server was not specified on the command line. Query user.
+            $LyncServer = QueryUser -Prompt "Skype for Business Server FQDN" -DefaultValue $deviceDNSName
+	    }
 
+        # Create the Credentials object if username has been provided
+	    LogProgress -activity "Skype for Business Data Export" -Status "Skype Server Administrator Credentials Required" -percentComplete 2
+	    if(!($UserName -and $Password)){
+		    $lyncCreds = Get-ConsoleCredential -Message "Skype Server Administrator Credentials Required" -DefaultUsername $UserName
+	    }
+	    else 
+	    {
+		    $securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
+		    $lyncCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
+	    }
 
+	    # Connect to Skype server
+	    LogProgress -activity "Skype for Business Data Export" -Status "Connecting..." -percentComplete 3
+        $uri = "https://" + $LyncServer + "/OcsPowershell"
+	
+	    if ($Verbose)
+	    {
+		    LogText "ConnectionUri: $uri"
+		    LogText "Username: $($lyncCreds.UserName)"
+	    }
 
+		if ($lyncCreds)
+		{
+			$lyncSession = New-PSSession -ConnectionUri $uri -AllowRedirection -Credential $lyncCreds -WarningAction:silentlycontinue
+		}
+		else
+		{
+			$lyncSession = New-PSSession -ConnectionUri $uri  -AllowRedirection -WarningAction:silentlycontinue
+		}
+	}
+		
+	if ($lyncSession) {
+		LogProgress -activity "Skype for Business Data Export" -Status "Importing Session" -percentComplete 10	
+		Import-PSSession $lyncSession -AllowClobber -WarningAction:silentlycontinue
+	}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-        $bAuthenticate = $false
-		$currConnectionMethod = ""
-
-        if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "SnapIn") {
-            $getModule = Get-Module -ListAvailable -Name Lync
-
-            if($getModule) {
-                # Import the specified Module if it exist
-                Import-Module Lync -ErrorAction SilentlyContinue -ErrorVariable $errImport
-                if (EnvironmentConfigured) {
-		            LogProgress -activity "Lync Server - Module" -Status "Loaded Lync module" -percentComplete 10 
-                    $bAuthenticate = $true
-                    $currConnectionMethod = "SnapIn"
-                }
-            }
-        }
-        
-        # If ConnectionMethod = Both
-        # Check if importing module was successful from SnapIn method. 
-        # If not then try the RemoteSession.
-        if (!$bAuthenticate -and ( $ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "RemoteSession" ) ) {
-
-			if (!$LyncServer) {
-				$LyncServer = QueryUser -Prompt "Lync Server FQDN" -DefaultValue "$($env:computerName).$($env:USERDNSDOMAIN)"
-			}
-
-        	# Create the Credentials object if username has been provided
-			if(!($UserName -and $Password)){
-				$lyncCreds = Get-ConsoleCredential -DefaultUsername $UserName -Message "Lync Server Administrator Credentials Required"
-			}
-			else 
+	if (!(EnvironmentConfigured))
+	{
+		# Lync environment not configured
+		if ($ConnectionMethod -eq "Both" -or $ConnectionMethod -eq "SnapIn")
+		{
+			# Load Lync SnapIns
+			LogProgress -activity "Skype for Business Data Export" -Status "Loading SnapIns" -percentComplete 11
+			
+			$allSnapIns = get-pssnapin -registered
+			if ($Verbose)
 			{
-				$securePassword = ConvertTo-SecureString $Password -AsPlainText -Force
-				$lyncCreds = New-Object System.Management.Automation.PSCredential ($UserName, $securePassword)
+				LogText "Registered SnapIns"
+				$allSnapIns | % { LogText "Name: $($_.Name) Version: $($_.PSVersion)"}
 			}
+			
+			$allSnapIns = $allSnapIns | sort -Descending
+			
+			foreach ($snapIn in $allSnapIns){
+				if (($snapIn.name -eq 'Lync') -or
+					($snapIn.name -eq 'SkypeForBusiness')){
+					LogText "Adding SnapIn: $($snapIn.Name)"
+					add-PSSnapin -Name $snapIn.name
+					
+					if (EnvironmentConfigured) {
+						break}
+				}
+			}
+		}
+	}
+	
+	if (!(EnvironmentConfigured))
+	{
+		LogError ("The script was unable to connect to Skype for Business/Lync server", 
+					"To maximise the chance of connectivity, please",
+					"   1) Ensure that the Skype for Business/Lync PowerShell Module is installed on this device and/or",
+					"   2) Execute this script on the Skype for Business/Lync server")
+		exit
+	}
 
-			# URI for the LYNC Server
-            $uri = "https://" + $LyncServer + "/OcsPowershell"
-			LogProgress -activity "Lync Data Export" -Status "Connecting To Server $uri" -percentComplete 5		
-            $session = New-PSSession -ConnectionURI $uri -Credential $lyncCreds -ErrorAction Continue
+	LogProgress -activity "Skype for Business Data Export" -Status "Loading Lync users" -percentComplete 12
+    $users = Get-CsUser
+    if ($Verbose){
+		LogText "User Count: $($users.count)"
+    }
+		    
+    # Load all the policies
+    $ConferencePolicies = Get-CsConferencingPolicy
+    if ($Verbose){
+		LogText "Conference Policy Count: $($ConferencePolicies.count)"
+    }
 
-            if(-not($session)) {
-                LogError ("The script was unable to connect to Lync server", 
-							"To maximise the chance of connectivity, please",
-							"   1) Ensure that the Lync PowerShell Module is installed on this device and/or",
-							"   2) Execute this script on the Lync server")
-			    Exit
+    $VoicePolicies = Get-CsVoicePolicy     
+    if ($Verbose){
+		LogText "Voice Policy Count: $($VoicePolicies.count)"
+    }     
+          
+    foreach ($user in $users) {
+        if ($Verbose){
+			LogText "Collecting user data for $($user.UserPrincipalName)"
+        }
+
+        $bUserStatus = $false
+        $bStdCAL = $false
+        $bEntCAL = $false
+        $bPlusCAL = $false
+        $bVoicePolicy = $false
+				
+        # Check for Standard CAL requirement
+        if ($user.Enabled) {
+            $bUserStatus = $true
+            $bStdCAL = $true
+        }
+				
+		# Check for Enterprise CAL requirement
+        if ($user.ConferencingPolicy -ne $null) {
+
+			# Get details of the Conferencing Policy
+            if($currConnectionMethod -eq "SnapIn") {
+                $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy.FriendlyName)}
             }
             else {
-		        LogProgress -activity "Lync Data Export" -Status "Importing Lync Session" -percentComplete 10    
-                
-                # Import authenticated session
-                $importSession = Import-PsSession $session -AllowClobber
-                
-                $bAuthenticate = $true
-                $currConnectionMethod = "RemoteSession"
-            }
-	    }
-		
-        if($bAuthenticate) {
-		    LogProgress -activity "Lync Data Export" -Status "Loading Lync users" -percentComplete 12
-            $users = Get-CsUser
-            if ($Verbose){
-		        LogText "User Count: $($users.count)"
-            }
-		    
-            # Load all the policies
-            $ConferencePolicies = Get-CsConferencingPolicy
-            if ($Verbose){
-		        LogText "Conference Policy Count: $($ConferencePolicies.count)"
+                $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy)}
+                #$userConfPolicy = Get-CsConferencingPolicy $user.ConferencingPolicy
             }
 
-            $VoicePolicies = Get-CsVoicePolicy     
-            if ($Verbose){
-		        LogText "Voice Policy Count: $($VoicePolicies.count)"
-            }     
-          
-            foreach ($user in $users) {
-                if ($Verbose){
-				    LogText "Collecting user data for $($user.UserPrincipalName)"
-                }
-
-                $bUserStatus = $false
-                $bStdCAL = $false
-                $bEntCAL = $false
-                $bPlusCAL = $false
-                $bVoicePolicy = $false
-				
-                # Check for Standard CAL requirement
-                if ($user.Enabled) {
-                    $bUserStatus = $true
-                    $bStdCAL = $true
-                }
-				
-				# Check for Enterprise CAL requirement
-                if ($user.ConferencingPolicy -ne $null) {
-
-					# Get details of the Conferencing Policy
-                    if($currConnectionMethod -eq "SnapIn") {
-                        $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy.FriendlyName)}
-                    }
-                    else {
-                        $userConfPolicy = $ConferencePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.ConferencingPolicy)}
-                        #$userConfPolicy = Get-CsConferencingPolicy $user.ConferencingPolicy
-                    }
-
-                    if ( ($userConfPolicy.AllowIPAudio -eq $true) -or `
-                         ($userConfPolicy.AllowIPVideo -eq $true) -or `
-                         ($userConfPolicy.AllowUserToScheduleMeetingsWithAppSharing -eq $true) -or `
-                         ($userConfPolicy.EnableDataCollaboration -eq $true) ) {
-                        # User needs Enterprise CAL
-                        $bEntCAL = $true
-                    }
-                }
-
-                if ($bEntCAL) {
-                    $user | Add-Member -MemberType NoteProperty -Name AllowIPAudio -Value $userConfPolicy.AllowIPAudio
-                    $user | Add-Member -MemberType NoteProperty -Name AllowIPVideo -Value $userConfPolicy.AllowIPVideo
-                    $user | Add-Member -MemberType NoteProperty -Name AllowUserToScheduleMeetingsWithAppSharing -Value $userConfPolicy.AllowUserToScheduleMeetingsWithAppSharing
-                    $user | Add-Member -MemberType NoteProperty -Name EnableDataCollaboration -Value $userConfPolicy.EnableDataCollaboration            
-                }
-                else {
-                    $user | Add-Member -MemberType NoteProperty -Name AllowIPAudio -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name AllowIPVideo -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name AllowUserToScheduleMeetingsWithAppSharing -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name EnableDataCollaboration -Value $false            
-                }
-											
-                # Check for Plus CAL requirement
-                if ($user.EnterpriseVoiceEnabled -eq $true) {
-                    # If true then the user requires Plus CAL
-                    $bPlusCAL = $true
-                }
-                
-                # Check if any Voice Policy exist for the user in Plus CAL
-                if ($user.VoicePolicy -ne $null) {
-								
-                    # Get details of the Voice Policy
-                    if($currConnectionMethod -eq "SnapIn") {
-                        $userVoicePolicy = $VoicePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.VoicePolicy.FriendlyName)}
-                    }
-                    else {
-                        $userVoicePolicy = $VoicePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.VoicePolicy)}
-                    }
-            
-                    $user | Add-Member -MemberType NoteProperty -Name AllowSimulRing -Value $userVoicePolicy.AllowSimulRing
-                    $user | Add-Member -MemberType NoteProperty -Name AllowCallForwarding -Value $userVoicePolicy.AllowCallForwarding
-                    $user | Add-Member -MemberType NoteProperty -Name AllowPSTNReRouting -Value $userVoicePolicy.AllowPSTNReRouting
-                    $user | Add-Member -MemberType NoteProperty -Name EnableDelegation -Value $userVoicePolicy.EnableDelegation
-                    $user | Add-Member -MemberType NoteProperty -Name EnableTeamCall -Value $userVoicePolicy.EnableTeamCall
-                    $user | Add-Member -MemberType NoteProperty -Name EnableCallTransfer -Value $userVoicePolicy.EnableCallTransfer
-                    $user | Add-Member -MemberType NoteProperty -Name EnableCallPark -Value $userVoicePolicy.EnableCallPark
-                    $user | Add-Member -MemberType NoteProperty -Name EnableMaliciousCallTracing -Value $userVoicePolicy.EnableMaliciousCallTracing
-                    $user | Add-Member -MemberType NoteProperty -Name EnableBWPolicyOverride -Value $userVoicePolicy.EnableBWPolicyOverride
-                    $user | Add-Member -MemberType NoteProperty -Name PreventPSTNTollBypass -Value $userVoicePolicy.PreventPSTNTollBypass
-                }
-                else {
-                    $user | Add-Member -MemberType NoteProperty -Name AllowSimulRing -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name AllowCallForwarding -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name AllowPSTNReRouting -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name EnableDelegation -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name EnableTeamCall -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name EnableCallTransfer -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name EnableCallPark -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name EnableMaliciousCallTracing -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name EnableBWPolicyOverride -Value $false
-                    $user | Add-Member -MemberType NoteProperty -Name PreventPSTNTollBypass -Value $false
-                }
-				
-                $CAL = CalculateCAL $bUserStatus $bStdCAL $bEntCAL $bPlusCAL
-
-                # Add CAL to CSV    
-                $user | Add-Member -MemberType NoteProperty -Name CALRequired -Value $CAL
-            }   # End users for loop
-    
-			LogProgress -activity "Lync Data Export" -Status "Exporting Lync User Data" -percentComplete 95
-            $users | Select-Object SamAccountName, UserPrincipalName, FirstName, LastName, `
-                WindowsEmailAddress, Sid, LineServerURI, OriginatorSid, AudioVideoDisabled, `
-                IPPBXSoftPhoneRoutingEnabled, RemoteCallControlTelephonyEnabled, PrivateLine, `
-                HostedVoiceMail, DisplayName, HomeServer, TargetServerIfMoving, EnabledForFederation, `
-                EnabledForInternetAccess, PublicNetworkEnabled, EnterpriseVoiceEnabled, EnabledForRichPresence, `
-                LineURI, SipAddress, Enabled, TenantId, TargetRegistrarPool, VoicePolicy, MobilityPolicy, `
-                ConferencingPolicy, PresencePolicy, RegistrarPool, DialPlan, LocationPolicy, ClientPolicy, `
-                ClientVersionPolicy, ArchivingPolicy, PinPolicy, ExternalAccessPolicy, HostedVoicemailPolicy, `
-                HostingProvider, Name, DistinguishedName, Identity, Guid, ObjectCategory, `
-                WhenChanged, WhenCreated, OriginatingServer, IsValid, ObjectState, AllowIPAudio, AllowIPVideo, `
-                AllowUserToScheduleMeetingsWithAppSharing, EnableDataCollaboration, AllowSimulRing, `
-                AllowCallForwarding, AllowPSTNReRouting, EnableDelegation, EnableTeamCall, EnableCallTransfer, `
-                EnableCallPark, EnableMaliciousCallTracing, EnableBWPolicyOverride, PreventPSTNTollBypass, CALRequired `
-                | Export-Csv -NoTypeInformation -Path $OutputFile1 -Encoding UTF8
-
-            # Clear session
-            if ($session) { 
-                Remove-PsSession $session
+            if ( ($userConfPolicy.AllowIPAudio -eq $true) -or `
+                    ($userConfPolicy.AllowIPVideo -eq $true) -or `
+                    ($userConfPolicy.AllowUserToScheduleMeetingsWithAppSharing -eq $true) -or `
+                    ($userConfPolicy.EnableDataCollaboration -eq $true) ) {
+                # User needs Enterprise CAL
+                $bEntCAL = $true
             }
+        }
 
-		    LogProgress -activity "Lync Data Export" -Status "Lync User Data Exported" -percentComplete 100
+        if ($bEntCAL) {
+            $user | Add-Member -MemberType NoteProperty -Name AllowIPAudio -Value $userConfPolicy.AllowIPAudio
+            $user | Add-Member -MemberType NoteProperty -Name AllowIPVideo -Value $userConfPolicy.AllowIPVideo
+            $user | Add-Member -MemberType NoteProperty -Name AllowUserToScheduleMeetingsWithAppSharing -Value $userConfPolicy.AllowUserToScheduleMeetingsWithAppSharing
+            $user | Add-Member -MemberType NoteProperty -Name EnableDataCollaboration -Value $userConfPolicy.EnableDataCollaboration            
         }
         else {
-		    LogError ("The script was unable to connect to Lync server", 
-						"To maximise the chance of connectivity, please",
-						"   1) Ensure that the Lync PowerShell Module is installed on this device and/or",
-						"   2) Execute this script on the Lync server") 
+            $user | Add-Member -MemberType NoteProperty -Name AllowIPAudio -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name AllowIPVideo -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name AllowUserToScheduleMeetingsWithAppSharing -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name EnableDataCollaboration -Value $false            
         }
-	}
-    catch {
-        # Clear session
-        if ($session) { 
-            Remove-PsSession $session
+											
+        # Check for Plus CAL requirement
+        if ($user.EnterpriseVoiceEnabled -eq $true) {
+            # If true then the user requires Plus CAL
+            $bPlusCAL = $true
         }
-		LogLastException
+                
+        # Check if any Voice Policy exist for the user in Plus CAL
+        if ($user.VoicePolicy -ne $null) {
+								
+            # Get details of the Voice Policy
+            if($currConnectionMethod -eq "SnapIn") {
+                $userVoicePolicy = $VoicePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.VoicePolicy.FriendlyName)}
+            }
+            else {
+                $userVoicePolicy = $VoicePolicies | Where-Object {$_.Identity -eq ("Tag:" + $user.VoicePolicy)}
+            }
+            
+            $user | Add-Member -MemberType NoteProperty -Name AllowSimulRing -Value $userVoicePolicy.AllowSimulRing
+            $user | Add-Member -MemberType NoteProperty -Name AllowCallForwarding -Value $userVoicePolicy.AllowCallForwarding
+            $user | Add-Member -MemberType NoteProperty -Name AllowPSTNReRouting -Value $userVoicePolicy.AllowPSTNReRouting
+            $user | Add-Member -MemberType NoteProperty -Name EnableDelegation -Value $userVoicePolicy.EnableDelegation
+            $user | Add-Member -MemberType NoteProperty -Name EnableTeamCall -Value $userVoicePolicy.EnableTeamCall
+            $user | Add-Member -MemberType NoteProperty -Name EnableCallTransfer -Value $userVoicePolicy.EnableCallTransfer
+            $user | Add-Member -MemberType NoteProperty -Name EnableCallPark -Value $userVoicePolicy.EnableCallPark
+            $user | Add-Member -MemberType NoteProperty -Name EnableMaliciousCallTracing -Value $userVoicePolicy.EnableMaliciousCallTracing
+            $user | Add-Member -MemberType NoteProperty -Name EnableBWPolicyOverride -Value $userVoicePolicy.EnableBWPolicyOverride
+            $user | Add-Member -MemberType NoteProperty -Name PreventPSTNTollBypass -Value $userVoicePolicy.PreventPSTNTollBypass
+        }
+        else {
+            $user | Add-Member -MemberType NoteProperty -Name AllowSimulRing -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name AllowCallForwarding -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name AllowPSTNReRouting -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name EnableDelegation -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name EnableTeamCall -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name EnableCallTransfer -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name EnableCallPark -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name EnableMaliciousCallTracing -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name EnableBWPolicyOverride -Value $false
+            $user | Add-Member -MemberType NoteProperty -Name PreventPSTNTollBypass -Value $false
+        }
+				
+        $CAL = CalculateCAL $bUserStatus $bStdCAL $bEntCAL $bPlusCAL
+
+        # Add CAL to CSV    
+        $user | Add-Member -MemberType NoteProperty -Name CALRequired -Value $CAL
+    }   # End users for loop
+    
+	LogProgress -activity "Skype for Business Data Export" -Status "Exporting Skype User Data" -percentComplete 80
+    $users | Select-Object SamAccountName, UserPrincipalName, FirstName, LastName, `
+        WindowsEmailAddress, Sid, LineServerURI, OriginatorSid, AudioVideoDisabled, `
+        IPPBXSoftPhoneRoutingEnabled, RemoteCallControlTelephonyEnabled, PrivateLine, `
+        HostedVoiceMail, DisplayName, HomeServer, TargetServerIfMoving, EnabledForFederation, `
+        EnabledForInternetAccess, PublicNetworkEnabled, EnterpriseVoiceEnabled, EnabledForRichPresence, `
+        LineURI, SipAddress, Enabled, TenantId, TargetRegistrarPool, VoicePolicy, MobilityPolicy, `
+        ConferencingPolicy, PresencePolicy, RegistrarPool, DialPlan, LocationPolicy, ClientPolicy, `
+        ClientVersionPolicy, ArchivingPolicy, PinPolicy, ExternalAccessPolicy, HostedVoicemailPolicy, `
+        HostingProvider, Name, DistinguishedName, Identity, Guid, ObjectCategory, `
+        WhenChanged, WhenCreated, OriginatingServer, IsValid, ObjectState, AllowIPAudio, AllowIPVideo, `
+        AllowUserToScheduleMeetingsWithAppSharing, EnableDataCollaboration, AllowSimulRing, `
+        AllowCallForwarding, AllowPSTNReRouting, EnableDelegation, EnableTeamCall, EnableCallTransfer, `
+        EnableCallPark, EnableMaliciousCallTracing, EnableBWPolicyOverride, PreventPSTNTollBypass, CALRequired `
+        | Export-Csv -NoTypeInformation -Path $OutputFile1 -Encoding UTF8
+
+    LogProgress -activity "Skype for Business Data Export" -Status "Querying Site Information" -percentComplete 85
+    Get-CsSite | Export-Csv -NoTypeInformation -Path $OutputFile2 -Encoding UTF8
+
+    LogProgress -activity "Skype for Business Data Export" -Status "Querying Application Information" -percentComplete 90
+    Get-CsServerApplication | Export-Csv -NoTypeInformation -Path $OutputFile3 -Encoding UTF8
+
+    LogProgress -activity "Skype for Business Data Export" -Status "Querying Version Information" -percentComplete 95
+    Get-CsServerVersion | Export-Csv -NoTypeInformation -Path $OutputFile4 -Encoding UTF8
+
+    # Clear session
+    if ($lyncSession) { 
+        Remove-PsSession $lyncSession
     }
+
+	LogProgress -activity "Skype for Business Data Export" -Status "Lync User Data Exported" -percentComplete 100
+
 }
 
 # Call the Get-LyncUsers Function to 
 #	- Load Account Details
 #   - Calculate an approximation on CAL required 
 #	- Export CSV
-Get-LyncUsers
+try {
+	Get-LyncUsers
+}
+catch {
+	LogLastException
+
+    if ($lyncSession) { 
+        Remove-PsSession $lyncSession
+    }
+}

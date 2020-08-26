@@ -8,7 +8,7 @@
  
 <#
 .SYNOPSIS
-Retrieves physical host, virtual machine and virtual machine migration data from a Hyper-V server
+Retrieves physical host, virtual machine and virtual machine start up activity from a Hyper-V server
 
 .DESCRIPTION
 The Get-HyperVVMList script queries a single HyperV server and produces 4 CSV files
@@ -18,8 +18,7 @@ The Get-HyperVVMList script queries a single HyperV server and produces 4 CSV fi
           PowerShell and requires minimum Windows Server 2012 R2
     3)    HyperVExportHosts.csv - One record per Hyper-V server. The data is retrieved through 
           PowerShell and requires minimum Windows Server 2012 R2
-    4)    HyperVExportGuestMigration.csv - One record per migration event. The data is retrieved through 
-          PowerShell and requires minimum Windows Server 2012 R2
+    4)    HyperVExportStartEvents.csv - One record per VM start event. 
 
 Files are written to current working directory
 
@@ -44,7 +43,7 @@ Param(
     [alias("o3")]
     $OutputFile3 = "HyperVExport" + $HyperVServer + "Hosts.csv",
     [alias("o4")]
-    $OutputFile4 = "HyperVExport" + $HyperVServer + "GuestMigration.csv",
+    $OutputFile4 = "HyperVExport" + $HyperVServer + "VMStartEvents.csv",
 	[alias("log")]
 	[string] $LogFile = "HyperVLogFile.txt",
 	[ValidateSet("AllData","BasicData","DetailedData")] 
@@ -139,6 +138,31 @@ function LogEnvironmentDetails {
 	LogText -Color Gray "Server:                          $HyperVServer"
 	LogText -Color Gray "Required Data:                   $RequiredData"
 	LogText ""
+}
+
+function SetupDateFormats {
+    # Standardise date/time output to ISO 8601'ish format
+    $bDateFormatConfigured = $false
+    $currentThread = [System.Threading.Thread]::CurrentThread
+    
+    try {
+        $CurrentThread.CurrentCulture.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+        $CurrentThread.CurrentCulture.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+        $bDateFormatConfigured = $true
+    }
+    catch {
+    }
+
+    if (!($bDateFormatConfigured)) {
+        try {
+            $cultureCopy = $CurrentThread.CurrentCulture.Clone()
+            $cultureCopy.DateTimeFormat.ShortDatePattern = 'yyyy-MM-dd'
+            $cultureCopy.DateTimeFormat.LongDatePattern = 'yyyy-MM-dd HH:mm:ss'
+            $currentThread.CurrentCulture = $cultureCopy
+        }
+        catch {
+        }
+    }
 }
 
 function Get-HyperVVMList1 {
@@ -251,37 +275,62 @@ function Get-HyperVVMList1 {
 
 function Get-HyperVVMList2 {
 	if ((Get-Module -ListAvailable -Name "Hyper-V") -eq $null) {
-		LogError "Hyper PowerShell module not available"
+		LogError "Hyper-V PowerShell module not available"
 		return
 	}
 
 	Import-Module "Hyper-V"
 
-	Get-VM -ComputerName $HyperVServer | export-csv $OutputFile2 -notypeinformation -Encoding UTF8
-	Get-VMHost -ComputerName $HyperVServer | export-csv $OutputFile3 -notypeinformation -Encoding UTF8
+    Get-VM -ComputerName $HyperVServer |  
+		Select -Property Name, 
+            @{n='GUID';e={$_.VMId}},
+            State, ReplicationState, MemoryAssigned, IntegrationServicesVersion, 
+            @{n='Host';e={$_.ComputerName}},
+            CreationTime, IsClustered, ProcessorCount,
+            @{n='IPAddresses';e={($_.NetworkAdapters | select -expand IpAddresses) -join ", "}}, # IPAddresses
+            @{n='MACAddresses';e={($_.NetworkAdapters | select -expand MacAddress) -join ", "}} | # MacAddress
+		sort Name | 
+        export-csv $OutputFile2 -notypeinformation -Encoding UTF8
+
+	Get-VMHost -ComputerName $HyperVServer | 
+        Select -Property Name, LogicalProcessorCount, MemoryCapacity, MacAddressMinimum, MacAddressMaximum, VirtualMachineMigrationEnabled |
+        export-csv $OutputFile3 -notypeinformation -Encoding UTF8
 }
 
 function Get-HyperVVMMigrationInfo {
 	
 	LogProgress "Retrieving HyperV VM Events"
-	
-	$AllVMEvents = Get-WinEvent -LogName "Microsoft-Windows-Hyper-V-VMMS-Admin" -ComputerName $HyperVServer
-	if($Verbose){
-		LogProgress "Retrieved $($AllVMEvents.Count) HyperV VM Events"
-	}
 
-	$AllVMMigrationEvents = $AllVMEvents | where {$_.Id -like "2041*"} 
-	if($Verbose){
-		LogProgress "Retrieved $($AllVMMigrationEvents.Count) HyperV VM Migration Events"
-	}
+    $events = @()
+    $logEvents = Get-WinEvent -ComputerName $HyperVServer -LogName "microsoft-windows-hyper-v-worker-admin" |  where {$_.Id -eq 18500}
+        
+    foreach ($logEvent in $logEvents) {
+            
+        $eventParameters = $logEvent.Properties
+        if ($eventParameters -eq $null){
+            LogText "Event Missing Parameters. ID: $($logEvent.Id) Time: $($logEvent.TimeCreated)"
+            continue
+        }
 
-	$AllVMMigrationEvents | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
+        $event = new-object PSObject
+        $event | Add-Member -MemberType NoteProperty -Name "ID" -Value $logEvent.Id
+        $event | Add-Member -MemberType NoteProperty -Name "Time" -Value $logEvent.TimeCreated
+        $event | Add-Member -MemberType NoteProperty -Name "Description" -Value "VM started"
+        $event | Add-Member -MemberType NoteProperty -Name "UserID" -Value $logEvent.UserId
+        $event | Add-Member -MemberType NoteProperty -Name "MachineName" -Value $eventParameters[0].Value
+        $event | Add-Member -MemberType NoteProperty -Name "MachineGUID" -Value $eventParameters[1].Value
+
+        $events += $event
+    }
+
+	$events | export-csv $OutputFile4 -notypeinformation -Encoding UTF8
 }
 
 function Get-HyperVVMList {
 	try {
 		InitialiseLogFile
 		LogEnvironmentDetails
+        SetupDateFormats
 
 		LogProgress "Getting basic HyperV Guest Info (WMI)"
 		Get-HyperVVMList1
